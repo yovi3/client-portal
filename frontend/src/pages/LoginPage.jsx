@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Scale, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { useNavigate } from "react-router-dom"; // <-- ADDED
+import { toast } from "sonner"; // <-- ADDED
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
@@ -9,6 +11,7 @@ export default function LoginPage() {
   });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate(); // <-- ADDED
 
   const validate = () => {
     const newErrors = {};
@@ -27,17 +30,45 @@ export default function LoginPage() {
     if (!validate()) return;
 
     try {
-      const res = await fetch("http://localhost:5000/api/login", {
+      const res = await fetch("http://localhost:8000/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password
+        }),
       });
+
       const data = await res.json();
-      if (res.ok) alert("Login successful!");
-      else alert(data.message || "Login failed");
+
+      if (res.ok) {
+        // --- UPDATED ---
+        toast.success("Login successful!", {
+          description: "Redirecting you to the dashboard...",
+        });
+        
+        // TODO: Save user data/token to context or localStorage
+        localStorage.setItem("user", JSON.stringify(data.user));
+        
+        // Redirect to dashboard after a short delay
+        setTimeout(() => {
+          navigate("/dashboard");
+        }, 1500);
+        // --- END UPDATE ---
+      } else {
+        // --- UPDATED ---
+        toast.error("Login Failed", {
+          description: data.detail || "Invalid email or password.",
+        });
+        // --- END UPDATE ---
+      }
     } catch (err) {
       console.error(err);
-      alert("Error connecting to server");
+      // --- UPDATED ---
+      toast.error("Connection Error", {
+        description: "Could not connect to the server.",
+      });
+      // --- END UPDATE ---
     }
   };
 
@@ -51,7 +82,9 @@ export default function LoginPage() {
   };
 
   const handleAzureLogin = () => {
-    window.location.href = "http://localhost:5000/api/login/azure";
+    // This flow will redirect the user. The success/error handling
+    // will need to happen on the page Azure redirects *back* to.
+    window.location.href = "http://localhost:8000/azure-login";
   };
 
   return (
