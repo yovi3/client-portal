@@ -10,7 +10,7 @@ export default function Contacts() {
   const [contacts, setContacts] = useState([]);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/contacts")
+    fetch("http://127.0.0.1:8002/contacts")
       .then((res) => res.json())
       .then((data) => setContacts(data))
       .catch(console.error);

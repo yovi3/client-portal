@@ -30,7 +30,7 @@ export default function LoginPage() {
     if (!validate()) return;
 
     try {
-      const res = await fetch("http://localhost:8000/login", {
+      const res = await fetch("http://localhost:8002/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -84,7 +84,7 @@ export default function LoginPage() {
   const handleAzureLogin = () => {
     // This flow will redirect the user. The success/error handling
     // will need to happen on the page Azure redirects *back* to.
-    window.location.href = "http://localhost:8000/azure-login";
+    window.location.href = "http://localhost:8002/azure-login";
   };
 
   return (

@@ -12,7 +12,7 @@ export default function Cases() {
   const [activeTab, setActiveTab] = useState("my");
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/cases")
+    fetch("http://127.0.0.1:8002/cases")
       .then((res) => res.json())
       .then((data) => setCases(data))
       .catch(console.error);

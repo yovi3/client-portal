@@ -23,7 +23,7 @@ export default function AzureCallback() {
 
   const handleAzureCallback = async (token) => {
     try {
-      const res = await fetch(`http://0.0.0.0:8000/azure-login?token=${token}`, {
+      const res = await fetch(`http://0.0.0.0:8002/azure-login?token=${token}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       })

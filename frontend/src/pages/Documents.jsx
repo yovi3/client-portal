@@ -10,7 +10,7 @@ export default function Documents() {
   const [documents, setDocuments] = useState([]);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/documents")
+    fetch("http://127.0.0.1:8002/documents")
       .then((res) => res.json())
       .then((data) => setDocuments(data))
       .catch(console.error);

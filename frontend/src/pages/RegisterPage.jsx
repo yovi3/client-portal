@@ -50,7 +50,7 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
-      const res = await fetch("http://0.0.0.0:8000/register", {
+      const res = await fetch("http://0.0.0.0:8002/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
