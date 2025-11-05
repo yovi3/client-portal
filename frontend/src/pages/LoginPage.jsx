@@ -39,36 +39,30 @@ export default function LoginPage() {
         }),
       });
 
-      const data = await res.json();
+      // 'data' IS the user object {id: ..., email: ..., role: ...}
+      const data = await res.json(); 
 
       if (res.ok) {
-        // --- UPDATED ---
         toast.success("Login successful!", {
           description: "Redirecting you to the dashboard...",
         });
         
-        // TODO: Save user data/token to context or localStorage
-        localStorage.setItem("user", JSON.stringify(data.user));
+        // ✅ FIXED: Save the entire 'data' object, not 'data.user'
+        localStorage.setItem("user", JSON.stringify(data)); 
         
-        // Redirect to dashboard after a short delay
         setTimeout(() => {
           navigate("/dashboard");
         }, 1500);
-        // --- END UPDATE ---
       } else {
-        // --- UPDATED ---
         toast.error("Login Failed", {
           description: data.detail || "Invalid email or password.",
         });
-        // --- END UPDATE ---
       }
     } catch (err) {
       console.error(err);
-      // --- UPDATED ---
       toast.error("Connection Error", {
         description: "Could not connect to the server.",
       });
-      // --- END UPDATE ---
     }
   };
 
@@ -97,6 +91,9 @@ export default function LoginPage() {
           </div>
           <h1 className="text-3xl font-bold mb-2">Welcome back</h1>
           <p className="text-gray-600">Sign in to your account to continue</p>
+          <p className="text-gray-600">---</p>
+          <p className="text-gray-600">Lawyer account: lawyer@example.com:password123</p>
+          <p className="text-gray-600">Client account: client@example.com:password123</p>
         </div>
 
         {/* Azure login */}

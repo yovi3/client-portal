@@ -9,8 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Paperclip, Send } from "lucide-react";
-// ✅ IMPORT useSearchParams
-import { useNavigate, useSearchParams } from "react-router-dom";
 
 export default function Messages() {
   // --- STATE VARIABLES ---
@@ -19,189 +17,122 @@ export default function Messages() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // --- NEW STATE FOR LOADING/ERRORS ---
+  const [isLoading, setIsLoading] = useState(true); // Start in loading state
+  const [error, setError] = useState(null); // To store any errors
 
   const messagesEndRef = useRef(null);
   const webSocketRef = useRef(null);
-  const navigate = useNavigate();
-  
-  // ✅ ADD searchParams HOOK
-  const [searchParams, setSearchParams] = useSearchParams();
 
-  // --- Get the logged-in user from localStorage ---
-  const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      const storedUserData = localStorage.getItem("user");
-      try {
-        return storedUserData ? JSON.parse(storedUserData) : null;
-      } catch (e) {
-        localStorage.removeItem("user"); // Clear corrupted data
-        return null;
-      }
-    }
-    return null;
-  });
-
-  // --- Auth check effect ---
-  useEffect(() => {
-    if (!user) {
-      navigate("/login");
-    }
-  }, [user, navigate]);
-
+  // TODO: You (Lawyer) are sending, so you need your ID
+  const YOUR_LAWYER_ID = 1; // Get this from your auth context
 
   // --- EFFECT 1: Fetch Conversations (Cases) ---
   useEffect(() => {
-    if (!user) return; 
-
+    // We use an async function inside useEffect to use await
     const fetchConversations = async () => {
       setIsLoading(true);
       setError(null);
       
-      const endpoint = user.role === 'lawyer'
-        ? `http://0.0.0.0:8002/lawyers/${user.id}/cases`
-        : `http://0.0.0.0:8002/clients/${user.id}/cases`;
-
       try {
-        const res = await fetch(endpoint);
+        const res = await fetch(`http://0.0.0.0:8002/lawyers/${YOUR_LAWYER_ID}/cases`);
 
+        // Check if the HTTP response is 2xx
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ detail: "Network error" }));
+          const errorData = await res.json().catch(() => ({ detail: "Network error or non-JSON response" }));
           throw new Error(errorData.detail || `HTTP error! Status: ${res.status}`);
         }
 
-        const cases = await res.json();
+        const casesWithClients = await res.json();
 
-        if (!Array.isArray(cases)) {
-          console.error("API did not return an array:", cases);
+        // Check if the data is actually an array
+        if (!Array.isArray(casesWithClients)) {
+          console.error("API did not return an array:", casesWithClients);
           throw new Error("Invalid data format received from server.");
         }
 
-        const formattedConvos = cases.map(c => {
-           const participantName = user.role === 'lawyer'
-             ? c.client_user?.name
-             : c.assigned_lawyer_user?.name;
-           
-           return {
-             id: c.id,
-             participantName: participantName || c.title || "Unknown Participant",
-             unreadCount: c.unread_count || 0,
-             _caseData: c 
-           };
-        });
+        // Format the data for our state
+        const formattedConvos = casesWithClients.map(c => ({
+           id: c.id,
+           participantName: c?.title || "Unknown Client",
+           lastMessage: "...", // You may need another endpoint to get this
+           lastMessageTime: "...", // This could come from the last message
+           unreadCount: c.unread_messages,
+           _caseData: c // Store original data just in case
+        }));
         
         setConversations(formattedConvos);
 
       } catch (err) {
         console.error("Failed to fetch conversations:", err);
-        setError(err.message);
+        setError(err.message); // Store the error message to display
       } finally {
-        setIsLoading(false);
+        setIsLoading(false); // Stop loading
       }
     };
 
     fetchConversations();
 
-  }, [user]); // This effect runs once when 'user' is loaded
+  }, []); // Empty dependency array means this runs once on mount
 
   
-  // --- ✅ ADDED: Effect to auto-select chat from URL ---
+  // --- EFFECT 2: Fetch Messages & Connect WebSocket ---
   useEffect(() => {
-    const urlCaseId = searchParams.get("case_id");
-    
-    // Only run if we have conversations loaded and a case ID in the URL
-    if (urlCaseId && conversations.length > 0) {
-      const convoToSelect = conversations.find(
-        (c) => c.id.toString() === urlCaseId
-      );
-      
-      if (convoToSelect) {
-        setSelectedConversation(convoToSelect);
-        
-        // Optional: Remove the query param from URL after selection
-        setSearchParams({}, { replace: true });
-      }
-    }
-  }, [conversations, searchParams, setSearchParams]); // Runs when convos or URL changes
-
-
-  // --- EFFECT 3: Fetch Messages & Connect WebSocket ---
-  useEffect(() => {
-    if (selectedConversation && user) {
-
-      const openConversation = async () => {
-        try {
-          // --- STEP 1: Mark messages as read ---
-          await fetch(`http://0.0.0.0:8002/cases/${selectedConversation.id}/read`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reader_id: user.id }),
-          });
-
-          // --- STEP 2: Clear the unread badge locally ---
-          setConversations(prevConvos =>
-            prevConvos.map(c =>
-              c.id === selectedConversation.id
-                ? { ...c, unreadCount: 0 }
-                : c
-            )
-          );
-
-          // --- STEP 3: Fetch message history ---
-          const res = await fetch(`http://0.0.0.0:8002/cases/${selectedConversation.id}/messages`);
+    // This hook runs when 'selectedConversation' changes
+    if (selectedConversation) {
+      // 1. Fetch message history
+      fetch(`http://0.0.0.0:8002/cases/${selectedConversation.id}/messages`)
+        .then((res) => {
           if (!res.ok) throw new Error('Failed to fetch messages');
-          
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setMessages(data.map(msg => ({ ...msg, id: msg.id })));
-          }
-          scrollToBottom();
+          return res.json();
+        })
+        .then((data) => {
+           if (Array.isArray(data)) {
+             setMessages(data.map(msg => ({ ...msg, id: msg.id })));
+           }
+           scrollToBottom();
+        })
+        .catch(err => console.error("Message fetch error:", err));
 
-        } catch (err) {
-          console.error("Message fetch/read error:", err);
+      // 2. Connect to WebSocket
+      if (webSocketRef.current) {
+        webSocketRef.current.close();
+      }
+
+      const ws = new WebSocket(`ws://0.0.0.0:8002/ws/${selectedConversation.id}`);
+      webSocketRef.current = ws;
+
+      ws.onopen = () => console.log("WebSocket connected");
+      ws.onclose = () => console.log("WebSocket disconnected");
+
+      ws.onmessage = (event) => {
+        try {
+          const newMessage = JSON.parse(event.data);
+          setMessages((prevMessages) => [...prevMessages, { ...newMessage, id: newMessage.id }]);
+        } catch (e) {
+          console.error("Failed to parse ws message", e);
         }
-
-        // --- STEP 4: Connect to WebSocket ---
-        if (webSocketRef.current) {
-          webSocketRef.current.close();
-        }
-
-        const ws = new WebSocket(`ws://0.0.0.0:8002/ws/${selectedConversation.id}`);
-        webSocketRef.current = ws;
-
-        ws.onopen = () => console.log("WebSocket connected");
-        ws.onclose = () => console.log("WebSocket disconnected");
-
-        ws.onmessage = (event) => {
-          try {
-            const newMessage = JSON.parse(event.data);
-            setMessages((prevMessages) => [...prevMessages, { ...newMessage, id: newMessage.id }]);
-          } catch (e) {
-            console.error("Failed to parse ws message", e);
-          }
-        };
       };
-      
-      openConversation();
 
-      // Cleanup
+      // Cleanup on unmount or when conversation changes
       return () => {
         if (webSocketRef.current) {
           webSocketRef.current.close();
         }
       };
     }
-  }, [selectedConversation, user]);
-  
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  }, [selectedConversation]); // Dependency array
 
-  // --- Helper Functions ---
+  // ... (Keep your other functions: scrollToBottom, sendMessage, getInitials, formatTime)
+  // (No changes needed for them right now)
+
   const getInitials = (name) =>
-    (name || "?").split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+    name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
 
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
@@ -213,22 +144,20 @@ export default function Messages() {
   };
   
   const sendMessage = () => {
-    if (!newMessage.trim() || !webSocketRef.current || !user) return; 
+    if (!newMessage.trim() || !webSocketRef.current) return;
     
     const messagePayload = {
       content: newMessage,
-      sender_id: user.id,
+      sender_lawyer_id: YOUR_LAWYER_ID,
+      sender_client_id: null
     };
 
     webSocketRef.current.send(JSON.stringify(messagePayload));
     setNewMessage("");
   };
 
-  // --- RENDER LOGIC ---
-  if (!user) {
-    return <MainLayout><p className="p-4">Authenticating...</p></MainLayout>;
-  }
 
+  // --- RENDER LOGIC ---
   return (
     <MainLayout>
       <div className="flex gap-6 h-[80vh]">
@@ -238,10 +167,14 @@ export default function Messages() {
             <CardTitle>Messages</CardTitle>
             <Input placeholder="Search..." className="mt-2" />
           </CardHeader>
+          
+          {/* UPDATED CardContent to show Loading/Error states */}
           <CardContent className="p-0 flex-1">
             <ScrollArea className="h-full">
               {isLoading && <p className="p-4 text-sm text-muted-foreground">Loading...</p>}
-              {error && <p className="p-4 text-sm text-destructive">Error: {error}</p>}
+              
+              {error && <p className="p-4 text-sm text-destructive">{error}</p>}
+              
               {!isLoading && !error && (
                 <div className="space-y-1">
                   {conversations.length === 0 && (
@@ -251,17 +184,20 @@ export default function Messages() {
                     <button
                       key={conv.id}
                       onClick={() => setSelectedConversation(conv)}
-                      className={`w-full p-4 flex items-start gap-3 hover:bg-accent transition-colors text-left ${
+                      className={`w-full p-4 flex items-start gap-3 hover:bg-accent transition-colors ${
                         selectedConversation?.id === conv.id ? "bg-accent" : ""
                       }`}
                     >
                       <Avatar>
                         <AvatarFallback className="bg-primary/10 text-primary">{getInitials(conv.participantName)}</AvatarFallback>
                       </Avatar>
-                      <div className="flex-1 overflow-hidden">
-                        <div className="flex items-center justify-between mt-1.5">
+                      <div className="flex-1 text-left overflow-hidden">
+                        <div className="flex items-center justify-between mb-1">
                           <h3 className="font-semibold text-sm truncate">{conv.participantName}</h3>
-
+                          {/* <span className="text-xs text-muted-foreground">{formatTime(conv.lastMessageTime)}</span> */}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          {/* <p className="text-sm text-muted-foreground truncate">{conv.lastMessage}</p> */}
                           {conv.unreadCount > 0 && (
                             <Badge variant="destructive" className="ml-2 h-5 w-5 flex items-center justify-center text-xs">
                               {conv.unreadCount}
@@ -293,7 +229,7 @@ export default function Messages() {
                 <ScrollArea className="h-full pr-4">
                   <div className="space-y-3">
                     {messages.map((msg) => {
-                      const isOwn = msg.sender_id === user.id; 
+                      const isOwn = msg.sender_lawyer_id === YOUR_LAWYER_ID;
                       const senderName = isOwn ? "You" : selectedConversation.participantName;
 
                       return (
