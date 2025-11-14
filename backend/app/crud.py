@@ -1,8 +1,35 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import update, func, and_
 from . import models, schemas, auth
-from datetime import datetime
+from datetime import datetime, timedelta # Dodano timedelta
 from typing import Optional, Any, List, Tuple
+import random
+import string
+import secrets # Dodano secrets do generowania tokenów
+
+# =========================================================================
+# 0. HELPER FUNCTIONS
+# =========================================================================
+
+def generate_sms_tag(db: Session) -> str:
+    """Generuje unikalny 4-znakowy tag SMS (np. A1B2)."""
+    while True:
+        # Generuj tag (Litera, Cyfra, Litera, Cyfra)
+        tag = (
+            random.choice(string.ascii_uppercase) +
+            random.choice(string.digits) +
+            random.choice(string.ascii_uppercase) +
+            random.choice(string.digits)
+        )
+        # Sprawdź, czy tag już istnieje
+        existing_case = db.query(models.Case).filter(models.Case.sms_id_tag == tag).first()
+        if not existing_case:
+            return tag
+            
+def generate_secure_token(length: int = 32) -> str:
+    """Generuje bezpieczny, unikalny token dla dostępu bez logowania."""
+    return secrets.token_urlsafe(length)
+
 
 # =========================================================================
 # 1. UNIFIED USER CRUD (Handles Lawyers and Clients)
@@ -39,6 +66,16 @@ def get_user_by_aad(db: Session, aad_id: str) -> Optional[models.User]:
              .filter(models.LawyerProfile.aad_id == aad_id) \
              .first()
 
+# NOWA FUNKCJA
+def get_user_by_phone(db: Session, phone_number: str) -> Optional[models.User]:
+    """Pobiera użytkownika na podstawie numeru telefonu w profilu klienta."""
+    profile = db.query(models.ClientProfile)\
+                .filter(models.ClientProfile.phone == phone_number)\
+                .first()
+    if profile:
+        return get_user_by_id(db, profile.user_id)
+    return None
+
 def create_user(db: Session, user_data: schemas.UserCreate) -> models.User:
     """
     Creates a User and the corresponding LawyerProfile or ClientProfile.
@@ -70,7 +107,7 @@ def create_user(db: Session, user_data: schemas.UserCreate) -> models.User:
     elif user_data.role == 'client':
         db_profile = models.ClientProfile(
             user_id=db_user.id,
-            phone=profile_data.get("phone"),
+            phone=profile_data.get("phone"), # Upewnij się, że ten numer jest w E.164
             address=profile_data.get("address")
         )
     else:
@@ -127,6 +164,13 @@ comprehensive_case_load = [
     joinedload(models.Case.assigned_lawyer_user)
         .joinedload(models.User.lawyer_profile)
 ]
+
+def get_case_by_id(db: Session, case_id: int) -> Optional[models.Case]:
+    """Pobiera pojedynczą sprawę z pełnym załadowaniem danych."""
+    return db.query(models.Case)\
+             .options(*comprehensive_case_load)\
+             .filter(models.Case.id == case_id)\
+             .first()
 
 def get_cases(db: Session, skip: int = 0, limit: int = 100):
     """Gets all cases, loading all related user and profile data."""
@@ -200,11 +244,31 @@ def get_client_cases(db: Session, client_id: int) -> List[Tuple[models.Case, int
         .all()
     )
 
-def create_case(db: Session, case: schemas.CaseCreate):
+# NOWA FUNKCJA
+def get_active_cases_by_client_id(db: Session, client_id: int) -> List[models.Case]:
+    """Zwraca listę aktywnych spraw dla klienta."""
+    return db.query(models.Case)\
+             .filter(models.Case.client_id == client_id, models.Case.status == 'active')\
+             .all()
+
+# NOWA FUNKCJA
+def get_case_by_tag(db: Session, tag: str) -> Optional[models.Case]:
+    """Znajduje sprawę na podstawie jej unikalnego tagu SMS."""
+    return db.query(models.Case)\
+             .options(*comprehensive_case_load)\
+             .filter(models.Case.sms_id_tag == tag)\
+             .first()
+
+# ZMODYFIKOWANA FUNKCJA
+def create_case(db: Session, case: schemas.CaseCreate) -> models.Case:
     db_case_data = case.model_dump()
     # Handle potential mismatch from schema
     if 'lawyer_id' in db_case_data:
         db_case_data['assigned_lawyer_id'] = db_case_data.pop('lawyer_id')
+    
+    # Generuj i dodaj tag SMS
+    sms_tag = generate_sms_tag(db)
+    db_case_data['sms_id_tag'] = sms_tag
     
     db_case = models.Case(**db_case_data)
     db.add(db_case)
@@ -225,6 +289,7 @@ def create_case(db: Session, case: schemas.CaseCreate):
 # 4. MESSAGE CRUD (Simplified Sender ID)
 # =========================================================================
 
+# ZMODYFIKOWANA FUNKCJA
 def create_message(db: Session, message: schemas.MessageCreate) -> models.Message:
     """
     Creates a message using only the sender_id.
@@ -232,7 +297,8 @@ def create_message(db: Session, message: schemas.MessageCreate) -> models.Messag
     db_message = models.Message(
         content=message.content,
         case_id=message.case_id,
-        sender_id=message.sender_id
+        sender_id=message.sender_id,
+        channel=message.channel # Przekazanie kanału
     )
     db.add(db_message)
     db.commit()
@@ -345,3 +411,127 @@ def get_unread_message_notifications(db: Session, user_id: int, role: str, limit
     )
     
     return results
+
+# =========================================================================
+# 5. NOWE FUNKCJE: Awaiting SMS CRUD
+# =========================================================================
+
+def create_awaiting_sms(db: Session, phone: str, body: str, client_id: Optional[int] = None) -> models.AwaitingSMS:
+    db_awaiting = models.AwaitingSMS(
+        client_phone_number=phone,
+        sms_body=body,
+        client_id=client_id
+    )
+    db.add(db_awaiting)
+    db.commit()
+    db.refresh(db_awaiting)
+    return db_awaiting
+
+def get_awaiting_sms(db: Session, skip: int = 0, limit: int = 20) -> List[models.AwaitingSMS]:
+    """Pobiera wszystkie oczekujące wiadomości SMS."""
+    return db.query(models.AwaitingSMS)\
+             .options(joinedload(models.AwaitingSMS.client))\
+             .filter(models.AwaitingSMS.status == 'pending')\
+             .order_by(models.AwaitingSMS.received_at.desc())\
+             .offset(skip).limit(limit).all()
+
+def get_awaiting_sms_by_id(db: Session, sms_id: int) -> Optional[models.AwaitingSMS]:
+    """Pobiera jedną oczekującą wiadomość SMS."""
+    return db.query(models.AwaitingSMS)\
+             .filter(models.AwaitingSMS.id == sms_id)\
+             .first()
+
+def update_awaiting_sms_status(db: Session, sms_id: int, status: str) -> Optional[models.AwaitingSMS]:
+    """Aktualizuje status oczekującej wiadomości (np. na 'resolved')."""
+    db_sms = get_awaiting_sms_by_id(db, sms_id)
+    if db_sms:
+        db_sms.status = status
+        db.commit()
+        db.refresh(db_sms)
+    return db_sms
+
+# =========================================================================
+# 6. NOWE FUNKCJE: Document Request CRUD
+# =========================================================================
+
+def create_document_request(
+    db: Session, 
+    case_id: int, 
+    request_data: schemas.DocumentRequestCreate
+) -> models.DocumentRequest:
+    """
+    Tworzy nowe żądanie dokumentów i powiązane elementy.
+    Generuje unikalny token dostępu.
+    """
+    
+    # 1. Generowanie Tokena i daty wygaśnięcia (7 dni)
+    token = generate_secure_token()
+    token_expiry = datetime.utcnow() + timedelta(days=7) 
+
+    db_request = models.DocumentRequest(
+        case_id=case_id,
+        lawyer_id=request_data.lawyer_id,
+        access_token=token,
+        token_expires_at=token_expiry,
+        status="pending"
+    )
+    
+    db.add(db_request)
+    db.flush() 
+
+    # 2. Tworzenie listy wymaganych dokumentów
+    for item in request_data.required_items:
+        db_doc = models.RequestedDocument(
+            request_id=db_request.id,
+            name=item.name,
+            status="required"
+        )
+        db.add(db_doc)
+
+    # 3. Dodanie wiadomości na czat (dla historii)
+    chat_message_content = f"Formalne żądanie dokumentów ({len(request_data.required_items)} pozycji) zostało wysłane do klienta. {request_data.note if request_data.note else ''}"
+    
+    message_in = schemas.MessageCreate(
+        content=chat_message_content,
+        case_id=case_id,
+        sender_id=request_data.lawyer_id,
+        channel="portal",
+        message_type="document_request"
+    )
+    create_message(db, message=message_in)
+    
+    db.commit()
+    db.refresh(db_request)
+    
+    return db_request
+
+def get_document_request_by_token(db: Session, token: str) -> Optional[models.DocumentRequest]:
+    """Pobiera żądanie dokumentów po unikalnym tokenie i sprawdza, czy nie wygasł."""
+    request = db.query(models.DocumentRequest).options(
+        joinedload(models.DocumentRequest.requested_documents)
+    ).filter(
+        models.DocumentRequest.access_token == token,
+        models.DocumentRequest.token_expires_at > datetime.utcnow()
+    ).first()
+    return request
+
+def get_all_requests_by_case(db: Session, case_id: int) -> List[models.DocumentRequest]:
+    """Pobiera wszystkie żądania dokumentów dla sprawy."""
+    return db.query(models.DocumentRequest).filter(
+        models.DocumentRequest.case_id == case_id
+    ).options(
+        joinedload(models.DocumentRequest.requested_documents)
+    ).all()
+    
+def get_document_request_by_id(db: Session, request_id: int):
+    """
+    Retrieves a DocumentRequest by its primary key (ID).
+    """
+    return db.query(models.DocumentRequest).filter(models.DocumentRequest.id == request_id).first()
+
+
+def get_requested_document_by_id(db: Session, doc_id: int):
+    """
+    Retrieves a single RequestedDocument by its primary key (ID).
+    """
+    return db.query(models.RequestedDocument).filter(models.RequestedDocument.id == doc_id).first()

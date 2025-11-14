@@ -11,6 +11,7 @@ import Contacts from "@/pages/Contacts";
 import Documents from "@/pages/Documents";
 import Messages from "@/pages/Messages";
 import AzureCallback from './pages/AzureCallback'
+import SmsLandingPage from './pages/SmsLandingPage'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
       <Route path="/documents" element={<Documents />} />
       <Route path="/messages" element={<Messages />} />
       <Route path="/auth/callback" element={<AzureCallback />} />
+      <Route path="/requests/:token" element={<SmsLandingPage />} />
     </Routes>
   );
 }
