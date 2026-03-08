@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Paperclip, Send } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 export default function Messages() {
   // --- STATE VARIABLES ---
@@ -35,7 +36,7 @@ export default function Messages() {
       setError(null);
       
       try {
-        const res = await fetch(`http://0.0.0.0:8002/lawyers/${YOUR_LAWYER_ID}/cases`);
+        const res = await apiFetch(`/lawyers/${YOUR_LAWYER_ID}/cases`);
 
         // Check if the HTTP response is 2xx
         if (!res.ok) {
@@ -81,7 +82,7 @@ export default function Messages() {
     // This hook runs when 'selectedConversation' changes
     if (selectedConversation) {
       // 1. Fetch message history
-      fetch(`http://0.0.0.0:8002/cases/${selectedConversation.id}/messages`)
+      apiFetch(`/cases/${selectedConversation.id}/messages`)
         .then((res) => {
           if (!res.ok) throw new Error('Failed to fetch messages');
           return res.json();

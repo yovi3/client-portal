@@ -39,14 +39,41 @@ import {
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { format } from "date-fns"
 import { Toaster, toast } from "sonner" 
+import { API_BASE_URL, CLIENT_BASE_URL, getWsBaseUrl, apiFetch } from "@/lib/api"
+import { getStoredUser, fetchCurrentUser } from "@/lib/auth"
 
 // --- (NEW) API URL (moved to top level for global use) ---
-const API_BASE_URL = "http://127.0.0.1:8002";
-
 // --- UTILITY FUNCTIONS ---
 const dateToIsoString = (date) => {
     if (!date) return null;
     return date.toISOString();
+};
+
+const STAFF_ROLES = new Set(["lawyer", "accountant", "paralegal", "legal assistant", "admin"]);
+
+const getLawyerName = (caseData) =>
+  caseData?.assigned_lawyer_user?.name ||
+  caseData?.personnel?.find((person) => person.role === "lawyer")?.name ||
+  caseData?.personnel?.[0]?.name ||
+  "DSS Team";
+
+const getClientName = (caseData) =>
+  caseData?.client_user?.name ||
+  caseData?.clients?.[0]?.name ||
+  "Client";
+
+const getConversationParticipantName = (caseData, currentUser) => {
+  if (!caseData || !currentUser) return "Case Participant";
+
+  if (currentUser.role === "client") {
+    const names = (caseData.personnel || []).map((person) => person.name).filter(Boolean);
+    if (names.length) return names.join(", ");
+    return "DSS Team";
+  }
+
+  const names = (caseData.clients || []).map((client) => client.name).filter(Boolean);
+  if (names.length) return names.join(", ");
+  return caseData.title || "Client";
 };
 
 // =========================================================================
@@ -86,7 +113,30 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
   const { document_request } = message;
 
   if (!document_request) {
-    return <div className="text-red-500 text-sm p-4">Error: Document request data is missing or malformed.</div>;
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[75%] w-full">
+          <Card className="shadow-md bg-yellow-50 border-yellow-300 rounded-xl rounded-bl-sm">
+            <CardHeader className="p-4 flex flex-row items-center gap-3 space-y-0">
+              <div className="p-2 bg-yellow-100 rounded-full">
+                <FileSearch className="h-6 w-6 text-yellow-700" />
+              </div>
+              <div>
+                <CardTitle className="text-base text-yellow-800">
+                  Document Request
+                </CardTitle>
+                <p className="text-sm text-yellow-700">
+                  Details are unavailable for this request.
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 pt-0">
+              <p className="text-sm text-yellow-900">{message.content}</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
   
   const { 
@@ -96,18 +146,55 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
     access_token 
   } = document_request;
   
-  const lawyerName = conversation._caseData.assigned_lawyer_user?.name || 'Your Lawyer';
-  const clientName = conversation._caseData.client_user?.name || 'Client';
+  const lawyerName = getLawyerName(conversation._caseData);
+  const clientName = getClientName(conversation._caseData);
+
+  const uploadedCount = requested_documents.filter(doc => doc.status === 'uploaded' || doc.status === 'reviewed').length;
+  const totalCount = requested_documents.length;
+  const hasAllUploads = totalCount > 0 && uploadedCount === totalCount;
 
   // --- 1. LAWYER VIEW (Status Dashboard / "Preview") ---
   if (isLawyer) {
-    const uploadedCount = requested_documents.filter(doc => doc.status === 'uploaded' || doc.status === 'reviewed').length;
-    const totalCount = requested_documents.length;
     
     // (MODIFIED) This now calls the function passed from the parent
     const handleReviewClick = () => {
         onReviewClick(document_request); // Pass the request data up
     };
+
+    if (hasAllUploads) {
+      return (
+        <div className="flex justify-start">
+          <div className="max-w-[75%] w-full">
+            <Card className="shadow-md border-green-300 bg-green-50 rounded-xl rounded-bl-sm">
+              <CardHeader className="p-4 flex flex-row items-center gap-3 space-y-0">
+                <div className="p-2 bg-green-100 rounded-full">
+                  <CheckCircle2 className="h-6 w-6 text-green-700" />
+                </div>
+                <div>
+                  <CardTitle className="text-base text-green-800">
+                    Documents received
+                  </CardTitle>
+                  <p className="text-sm text-green-700">
+                    {uploadedCount} of {totalCount} items uploaded.
+                  </p>
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 pt-0">
+                <div className="flex justify-end">
+                  <Button 
+                    onClick={handleReviewClick}
+                    variant="secondary"
+                    className="text-sm h-9"
+                  >
+                    Review uploads
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="flex justify-start">
@@ -175,7 +262,7 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
   }
 
   // --- 2. CLIENT VIEW (Action Card) ---
-  const isCompleted = overallStatus === 'completed';
+  const isCompleted = overallStatus === 'completed' || hasAllUploads;
   const uploadUrl = `${CLIENT_BASE_URL}/requests/${access_token}`; // Use CLIENT_BASE_URL
 
   const handleUploadClick = () => {
@@ -188,19 +275,50 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
     }
   };
 
+  if (isCompleted) {
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[75%] w-full">
+          <Card className="shadow-md border-green-300 bg-green-50 rounded-xl rounded-bl-sm">
+            <CardHeader className="p-4 flex flex-row items-center gap-3 space-y-0">
+              <div className="p-2 bg-green-100 rounded-full">
+                <CheckCircle2 className="h-6 w-6 text-green-700" />
+              </div>
+              <div>
+                <CardTitle className="text-base text-green-800">
+                  Documents received
+                </CardTitle>
+                <p className="text-sm text-green-700">
+                  From {lawyerName}
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 pt-0">
+              <div className="flex justify-end">
+                <Button onClick={handleUploadClick} variant="secondary" className="text-sm h-9">
+                  View uploads
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex justify-start">
       <div className="max-w-[75%] w-full">
-        <Card className={`shadow-md ${isCompleted ? 'border-green-300 bg-green-50' : 'border-blue-300 bg-blue-50'} rounded-xl rounded-bl-sm`}>
+        <Card className="shadow-md border-blue-300 bg-blue-50 rounded-xl rounded-bl-sm">
           <CardHeader className="p-4 flex flex-row items-center gap-3 space-y-0">
-             <div className={`p-2 ${isCompleted ? 'bg-green-100' : 'bg-blue-100'} rounded-full`}>
-                <FileClock className={`h-6 w-6 ${isCompleted ? 'text-green-700' : 'text-blue-700'}`} />
+             <div className="p-2 bg-blue-100 rounded-full">
+                <FileClock className="h-6 w-6 text-blue-700" />
               </div>
               <div>
-                <CardTitle className={`text-base ${isCompleted ? 'text-green-800' : 'text-blue-800'}`}>
-                  {isCompleted ? 'Documents Received' : 'Action Required: Document Request'}
+                <CardTitle className="text-base text-blue-800">
+                  Action required: Document request
                 </CardTitle>
-                <p className={`text-sm ${isCompleted ? 'text-green-700' : 'text-blue-700'}`}>
+                <p className="text-sm text-blue-700">
                   From {lawyerName}
                 </p>
               </div>
@@ -208,12 +326,12 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
           
           <CardContent className="px-4 pb-4 pt-0 space-y-4">
             {message.content && (
-              <div className={`border-l-4 ${isCompleted ? 'border-green-300' : 'border-blue-300'} pl-3 py-1`}>
+              <div className="border-l-4 border-blue-300 pl-3 py-1">
                 <p className="text-sm italic text-gray-700">"{message.content}"</p>
               </div>
             )}
             
-            {deadline && !isCompleted && (
+            {deadline && (
               <div className="flex items-center gap-2 text-sm font-medium text-red-600 p-2 bg-red-50 rounded-md">
                 <CalendarIcon className="h-4 w-4" />
                 Please submit by: {format(new Date(deadline), 'MMM d, yyyy h:mm a')}
@@ -234,20 +352,11 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
             <div className="flex justify-end pt-2">
               <Button 
                 onClick={handleUploadClick}
-                variant={isCompleted ? "secondary" : "default"}
+                variant="default"
                 className="text-sm h-10 font-bold"
               >
-                {isCompleted ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    View My Uploads
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Documents Now
-                  </>
-                )}
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Documents Now
               </Button>
             </div>
           </CardContent>
@@ -288,25 +397,16 @@ export default function Messages() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // --- Get the logged-in user from localStorage ---
-  const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      const storedUserData = localStorage.getItem("user")
-      try {
-        return storedUserData ? JSON.parse(storedUserData) : null
-      } catch (e) {
-        localStorage.removeItem("user")
-        return null
-      }
-    }
-    return null
-  })
+  // --- Get the logged-in user (cookie or stored) ---
+  const [user, setUser] = useState(() => getStoredUser())
 
   // --- Auth check effect ---
   useEffect(() => {
-    if (!user) {
-      navigate("/login")
-    }
+    if (user) return
+    fetchCurrentUser().then((u) => {
+      if (u) setUser(u)
+      else navigate("/login")
+    })
   }, [user, navigate])
 
   // [.. Fetch Conversations (Cases) ..]
@@ -316,12 +416,8 @@ export default function Messages() {
     const fetchConversations = async () => {
       setIsLoading(true)
       setError(null)
-      const endpoint =
-        user.role === "lawyer"
-          ? `${API_BASE_URL}/lawyers/${user.id}/cases`
-          : `${API_BASE_URL}/clients/${user.id}/cases`
       try {
-        const res = await fetch(endpoint)
+        const res = await apiFetch("/cases")
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({ detail: "Network error" }))
           throw new Error(errorData.detail || `HTTP error! Status: ${res.status}`)
@@ -331,8 +427,8 @@ export default function Messages() {
           console.error("API did not return an array:", cases)
           throw new Error("Invalid data format received from server.")
         }
-        const formattedConvos = cases.map((c) => {
-          const participantName = user.role === "lawyer" ? c.client_user?.name : c.assigned_lawyer_user?.name
+          const formattedConvos = cases.map((c) => {
+          const participantName = getConversationParticipantName(c, user);
           return {
             id: c.id,
             participantName: participantName || c.title || "Unknown Participant",
@@ -366,13 +462,13 @@ export default function Messages() {
   // [.. Fetch Messages & Connect WebSocket ..]
   const fetchMessages = async (caseId) => {
     try {
-      await fetch(`${API_BASE_URL}/cases/${caseId}/read`, {
+      await apiFetch(`/cases/${caseId}/read`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reader_id: user.id }),
       })
       setConversations((prevConvos) => prevConvos.map((c) => (c.id === caseId ? { ...c, unreadCount: 0 } : c)))
-      const res = await fetch(`${API_BASE_URL}/cases/${caseId}/messages`)
+      const res = await apiFetch(`/cases/${caseId}/messages`)
       if (!res.ok) throw new Error("Failed to fetch messages")
       const data = await res.json()
       if (Array.isArray(data)) {
@@ -391,7 +487,7 @@ export default function Messages() {
         if (webSocketRef.current) {
           webSocketRef.current.close()
         }
-        const ws = new WebSocket(`ws://127.0.0.1:8002/ws/${selectedConversation.id}`)
+        const ws = new WebSocket(`${getWsBaseUrl()}/ws/${selectedConversation.id}`)
         webSocketRef.current = ws
         ws.onopen = () => console.log("WebSocket connected")
         ws.onclose = () => console.log("WebSocket disconnected")
@@ -496,7 +592,7 @@ export default function Messages() {
         deadline: dateToIsoString(deadline), 
       }
 
-      const res = await fetch(`${API_BASE_URL}/cases/${caseId}/requests`, {
+      const res = await apiFetch(`/cases/${caseId}/requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -550,7 +646,7 @@ export default function Messages() {
         {/* Left Sidebar: Conversations */}
         <Card className="w-[380px] flex flex-col shadow-lg border-border/40">
           <CardHeader className="pb-4 space-y-4">
-            <CardTitle className="text-2xl font-semibold">Messages</CardTitle>
+              <CardTitle className="text-2xl font-semibold">Case Messages</CardTitle>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -636,10 +732,13 @@ export default function Messages() {
                     </Avatar>
                     <div>
                       <h3 className="font-semibold text-base">{selectedConversation.participantName}</h3>
-                      {user.role === "lawyer" && (
+                          {STAFF_ROLES.has(user.role) && (
                         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                           <Smartphone className="h-3 w-3" />
-                          Case Code: {selectedConversation._caseData.sms_id_tag}
+                          Case Number: {selectedConversation._caseData.case_number}
+                          {user.role === "admin" && selectedConversation?._caseData?.case_serial
+                            ? ` | Case Serial: ${selectedConversation._caseData.case_serial}`
+                            : ""}
                         </p>
                       )}
                     </div>
@@ -670,19 +769,6 @@ export default function Messages() {
                         msg.message_type === "document_request" || 
                         (msg.document_request && Array.isArray(msg.document_request.requested_documents));
 
-                      if (isDocumentRequest) {
-                          return (
-                            <DocumentRequestMessage 
-                                key={msg.id} 
-                                message={msg} 
-                                conversation={selectedConversation}
-                                isLawyer={user.role === 'lawyer'}
-                                onReviewClick={handleOpenReviewModal} // <-- (NEW) Pass handler
-                            />
-                          );
-                      }
-                      
-                      // --- Render standard message ---
                       return (
                         <div key={msg.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
                           <div className={`flex gap-2.5 max-w-[75%] ${isOwn ? "flex-row-reverse" : ""}`}>
@@ -705,11 +791,48 @@ export default function Messages() {
                                     : "bg-card border border-border/50 text-foreground rounded-bl-sm"
                                 }`}
                               >
+                                {isDocumentRequest && (
+                                  <p className="mb-1 text-xs font-semibold opacity-80">Document Request</p>
+                                )}
                                 <p className="text-sm leading-relaxed">{msg.content}</p>
+                                {isDocumentRequest && msg.document_request && (
+                                  <div className="mt-2 space-y-1">
+                                    {(msg.document_request.requested_documents || []).map((doc) => (
+                                      <p key={doc.id} className="text-xs opacity-90">
+                                        - {doc.name} ({doc.status})
+                                      </p>
+                                    ))}
+                                    <div className="pt-1">
+                                      {STAFF_ROLES.has(user.role) ? (
+                                        <Button
+                                          size="sm"
+                                          variant={isOwn ? "secondary" : "outline"}
+                                          className="h-7"
+                                          onClick={() => handleOpenReviewModal(msg.document_request)}
+                                        >
+                                          Review uploads
+                                        </Button>
+                                      ) : (
+                                        msg.document_request.access_token && (
+                                          <Button
+                                            size="sm"
+                                            variant={isOwn ? "secondary" : "outline"}
+                                            className="h-7"
+                                            onClick={() =>
+                                              window.open(`${CLIENT_BASE_URL}/requests/${msg.document_request.access_token}`, "_blank")
+                                            }
+                                          >
+                                            Upload documents
+                                          </Button>
+                                        )
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                               <div className={`flex items-center gap-1.5 px-1 ${isOwn ? "flex-row-reverse" : ""}`}>
                                 <p className="text-xs text-muted-foreground">{formatTime(msg.timestamp)}</p>
-                                {msg.channel === "sms" && (
+                          {msg.channel === "sms" && (
                                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                     <Smartphone className="h-3 w-3" />
                                     <span className="text-[10px]">SMS</span>
@@ -729,7 +852,7 @@ export default function Messages() {
               {/* Input Area */}
               <div className="border-t border-border/50 bg-card p-4">
                 <div className="flex gap-2 items-end">
-                  {user.role === "lawyer" && (
+                  {STAFF_ROLES.has(user.role) && (
                     <Button
                       onClick={() => setIsRequestingDocs(true)}
                       variant="outline"
@@ -768,7 +891,7 @@ export default function Messages() {
               </div>
               <h3 className="text-xl font-semibold mb-2">Select a conversation</h3>
               <p className="text-muted-foreground text-sm max-w-sm">
-                {isLoading ? "Loading conversations..." : "Choose a conversation from the list to start messaging"}
+                {isLoading ? "Loading case conversations..." : "Choose a case conversation from the list to start messaging"}
               </p>
             </div>
           )}
@@ -940,7 +1063,7 @@ export default function Messages() {
                         It opens the file in a new tab.
                       */}
                       <a 
-                        href={`${API_BASE_URL}/${doc.file_path}`} 
+                        href={`${API_BASE_URL}/documents/${doc.id}/download`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                       >

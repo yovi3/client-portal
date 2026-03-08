@@ -10,11 +10,11 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Scale className="h-6 w-6 text-black" />
-            <span className="text-xl font-semibold">Client Portal</span>
+            <span className="text-xl font-semibold">Injury Case Portal</span>
           </div>
           <nav className="flex items-center gap-2">
             <a href="/dashboard">
-              <Button>Dashboard</Button>
+              <Button>Overview</Button>
             </a>
             <a href="/login">
               <Button variant="ghost">Sign In</Button>
@@ -30,7 +30,7 @@ export default function HomePage() {
       <main className="flex-1 flex items-center justify-center">
         <div className="max-w-4xl mx-auto px-4 py-20 text-center">
           <h1 className="text-5xl font-bold mb-6 text-gray-900">
-            Client Communication Portal
+            Injury Case Communication Portal
           </h1>
           <div className="flex items-center justify-center gap-4 flex-wrap">
             <a href="/register">

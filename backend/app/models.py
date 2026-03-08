@@ -1,7 +1,28 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Enum, func
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Table, func, UniqueConstraint
+from sqlalchemy.orm import relationship
 from .database import Base
 import datetime
+import json
+
+# =========================================================================
+# ASSOCIATION TABLES (Many-to-Many)
+# =========================================================================
+
+# 1. Personnel (Lawyers, Accountants, etc.) assigned to a Case
+case_personnel_association = Table(
+    'case_personnel_association', Base.metadata,
+    Column('case_id', Integer, ForeignKey('cases.id'), primary_key=True),
+    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('role', String, nullable=False) # e.g., 'lawyer', 'accountant', 'paralegal'
+)
+
+# 2. Clients assigned to a Case
+case_client_association = Table(
+    'case_client_association', Base.metadata,
+    Column('case_id', Integer, ForeignKey('cases.id'), primary_key=True),
+    Column('client_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('role_type', String, nullable=False, default='client', server_default='client')
+)
 
 # =========================================================================
 # 1. CORE USER TABLE (The Authentication Hub)
@@ -9,8 +30,7 @@ import datetime
 
 class User(Base):
     """
-    Central table for all users (lawyers, clients, admins).
-    Handles authentication and common fields.
+    Central table for all users.
     """
     __tablename__ = "users"
     
@@ -18,72 +38,88 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
-    role = Column(String, nullable=False) # 'lawyer', 'client', 'admin'
+    role = Column(String, nullable=False) # 'lawyer', 'client', 'admin', 'accountant'
+    aad_object_id = Column(String, unique=True, index=True, nullable=True)
+    auth_provider = Column(String, nullable=False, default="local")
+    last_azure_group_ids = Column(String, nullable=True)
+    last_azure_sync_at = Column(DateTime, nullable=True)
+    effective_role_source = Column(String, nullable=True)
     
-    # Relationships for linking to profile tables (one-to-one)
     lawyer_profile = relationship(
-        "LawyerProfile", 
-        back_populates="user", 
-        uselist=False,
-        cascade="all, delete-orphan"
+        "LawyerProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
     
     client_profile = relationship(
-        "ClientProfile", 
-        back_populates="user", 
-        uselist=False,
-        cascade="all, delete-orphan"
+        "ClientProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
 
-    # Relationships for the Case/Message tables (many-to-one)
-    cases_as_lawyer = relationship(
-        "Case", 
-        foreign_keys="[Case.assigned_lawyer_id]", 
-        back_populates="assigned_lawyer_user"
-    )
-    cases_as_client = relationship(
-        "Case", 
-        foreign_keys="[Case.client_id]", 
-        back_populates="client_user"
-    )
-    sent_messages = relationship("Message", back_populates="sender_user")
+    # Relationships for Cases
+    # (Removed cases_as_lawyer and cases_as_client, now replaced by many-to-many below)
     
-    # Relationship for AwaitingSMS
-    awaiting_sms = relationship("AwaitingSMS", back_populates="client")
+    # NEW M2M: Cases where this user is Personnel (Lawyer, Accountant, etc.)
+    assigned_cases = relationship(
+        "Case",
+        secondary=case_personnel_association,
+        back_populates="personnel"
+    )
+
+    # NEW M2M: Cases where this user is a Client
+    client_cases = relationship(
+        "Case",
+        secondary=case_client_association,
+        back_populates="clients"
+    )
+    
+    sent_messages = relationship("Message", back_populates="sender_user")
+    awaiting_sms = relationship(
+        "AwaitingSMS",
+        back_populates="client",
+        foreign_keys="AwaitingSMS.client_id",
+    )
+
+    @property
+    def azure_groups(self):
+        if not self.last_azure_group_ids:
+            return []
+        try:
+            parsed = json.loads(self.last_azure_group_ids)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return []
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+    __table_args__ = (UniqueConstraint("role", "permission", name="uq_role_permission"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    role = Column(String, nullable=False, index=True)
+    permission = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 # =========================================================================
-# 2. PROFILE TABLES (The Unique Data)
+# 2. PROFILE TABLES
 # =========================================================================
 
 class LawyerProfile(Base):
-    """
-    Holds data unique to lawyers (one-to-one relationship with User).
-    """
     __tablename__ = "lawyer_profiles"
-    
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
-    
     bar_number = Column(String, unique=True, nullable=False)
     specialty = Column(String)
     firm_name = Column(String)
     hourly_rate = Column(Integer, default=250)
     aad_id = Column(String, unique=True, nullable=True)
-    
     user = relationship("User", back_populates="lawyer_profile")
 
 class ClientProfile(Base):
-    """
-    Holds data unique to clients (one-to-one relationship with User).
-    """
     __tablename__ = "client_profiles"
-    
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
-    
     phone = Column(String, index=True) 
     address = Column(String)
     active_cases = Column(Integer, default=0)
-    joined_date = Column(DateTime, default=datetime.datetime.utcnow)
-
+    joined_date = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     user = relationship("User", back_populates="client_profile")
 
 # =========================================================================
@@ -92,7 +128,7 @@ class ClientProfile(Base):
 
 class Case(Base):
     """
-    Represents a legal case, linking one lawyer and one client (both are Users).
+    Represents a legal case.
     """
     __tablename__ = "cases"
     
@@ -102,21 +138,32 @@ class Case(Base):
     status = Column(String, default="active")
     priority = Column(String, default="medium")
     category = Column(String, default="General")
+    case_number = Column(Integer, unique=True, index=True, nullable=False)
+    case_serial = Column(String(8), unique=True, index=True, nullable=False)
+    # Deprecated: retained only for migration/backward compatibility
+    sms_id_tag = Column(String(10), unique=True, index=True, nullable=True)
     
-    sms_id_tag = Column(String(10), unique=True, index=True, nullable=False)
+    # --- REMOVED: assigned_lawyer_id and client_id foreign keys ---
     
-    assigned_lawyer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    client_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-
-    assigned_lawyer_user = relationship(
-        "User", 
-        foreign_keys=[assigned_lawyer_id], 
-        back_populates="cases_as_lawyer"
+    # NEW M2M: Personnel assigned to the case
+    personnel = relationship(
+        "User",
+        secondary=case_personnel_association,
+        back_populates="assigned_cases",
+        # Explicitly filter by user roles that represent personnel
+        primaryjoin="Case.id == case_personnel_association.c.case_id",
+        secondaryjoin="case_personnel_association.c.user_id == User.id"
     )
-    client_user = relationship(
-        "User", 
-        foreign_keys=[client_id], 
-        back_populates="cases_as_client"
+
+    # NEW M2M: Clients assigned to the case
+    clients = relationship(
+        "User",
+        secondary=case_client_association,
+        back_populates="client_cases",
+        primaryjoin="Case.id == case_client_association.c.case_id",
+        secondaryjoin="case_client_association.c.client_id == User.id",
+        # Ensure only users with role='client' are added here if possible, 
+        # though enforcement is best done in CRUD logic.
     )
     
     messages = relationship("Message", back_populates="case")
@@ -131,13 +178,12 @@ class Message(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     content = Column(String, nullable=False)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     is_read = Column(Boolean, default=False)
     
-    # ✅ FIX 1: The column for message type
     message_type = Column(String, default='text')
     
-    channel = Column(String, default="portal", nullable=False) # 'portal' or 'sms'
+    channel = Column(String, default="portal", nullable=False)
     
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -145,14 +191,11 @@ class Message(Base):
     case = relationship("Case", back_populates="messages")
     sender_user = relationship("User", back_populates="sent_messages")
     
-    # ✅ FIX 3: Relationship to DocumentRequest (uselist=False for one-to-one)
-    # This allows Pydantic to automatically load the document_request object
     document_request = relationship(
         "DocumentRequest", 
         back_populates="chat_message",
         uselist=False,
         cascade="all, delete-orphan",
-        # Use primaryjoin to explicitly link if necessary, though ForeignKey should suffice
         primaryjoin="Message.id == DocumentRequest.message_id" 
     )
 
@@ -161,60 +204,58 @@ class Message(Base):
 # =========================================================================
 
 class AwaitingSMS(Base):
-    """
-    Stores SMS messages that could not be automatically assigned to a case.
-    """
     __tablename__ = "awaiting_sms"
     
     id = Column(Integer, primary_key=True, index=True)
     client_phone_number = Column(String, index=True, nullable=False)
     sms_body = Column(String, nullable=False)
-    received_at = Column(DateTime, default=datetime.datetime.utcnow)
+    received_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     
     status = Column(String, default="pending", index=True)
     
     client_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    client = relationship("User", back_populates="awaiting_sms")
+    assigned_case_id = Column(Integer, ForeignKey("cases.id"), nullable=True)
+    assigned_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assigned_at = Column(DateTime, nullable=True)
+
+    client = relationship(
+        "User",
+        back_populates="awaiting_sms",
+        foreign_keys=[client_id],
+    )
+    assigned_case = relationship("Case", foreign_keys=[assigned_case_id])
+    assigned_by_user = relationship("User", foreign_keys=[assigned_by_user_id])
 
 # =========================================================================
 # 5. DOCUMENT REQUEST TABLES
 # =========================================================================
 
 class DocumentRequest(Base):
-    """
-    Represents a formal request for one or more documents from a client.
-    """
     __tablename__ = "document_requests"
 
     id = Column(Integer, primary_key=True, index=True)
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
-    lawyer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    lawyer_id = Column(Integer, ForeignKey("users.id"), nullable=False) # Keep single tracking lawyer for SMS responsibility
     
-    # ✅ FIX 2A: Foreign Key to the Message table (One-to-One Link)
     message_id = Column(Integer, ForeignKey("messages.id"), unique=True, nullable=True) 
-    
-    # ✅ FIX 2B: Deadline column
     deadline = Column(DateTime, nullable=True) 
+    note = Column(String, nullable=True)
 
     access_token = Column(String, unique=True, index=True, nullable=False)
     token_expires_at = Column(DateTime, nullable=False) 
     
     status = Column(String, default="pending", nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
     # Relationships
     case = relationship("Case", back_populates="document_requests")
     requested_documents = relationship("RequestedDocument", back_populates="request", cascade="all, delete-orphan")
     lawyer = relationship("User", foreign_keys=[lawyer_id])
     
-    # ✅ FIX 2C: Back-reference to the Message (crucial for Pydantic mapping)
     chat_message = relationship("Message", back_populates="document_request", uselist=False)
 
 
 class RequestedDocument(Base):
-    """
-    Represents a single required document or item within a DocumentRequest.
-    """
     __tablename__ = "requested_documents"
     
     id = Column(Integer, primary_key=True, index=True)
@@ -224,7 +265,6 @@ class RequestedDocument(Base):
     status = Column(String, default="required", nullable=False) 
 
     file_id = Column(Integer, nullable=True) 
-    
     file_path = Column(String, nullable=True)
     
     request = relationship("DocumentRequest", back_populates="requested_documents")

@@ -1,6 +1,7 @@
 import React, { useState } from "react"
 import { Scale, Mail, Lock, Eye, EyeOff, User } from "lucide-react"
 import { Toaster, toast } from "sonner"
+import { API_BASE_URL, apiFetch } from "@/lib/api"
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -15,12 +16,7 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const handleAzureLogin = () => {
-    const clientId = "YOUR_AZURE_CLIENT_ID"
-    const tenantId = "YOUR_TENANT_ID"
-    const redirectUri = encodeURIComponent(window.location.origin + "/auth/callback")
-    const scope = encodeURIComponent("openid profile email")
-    const authUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?client_id=${clientId}&response_type=token&redirect_uri=${redirectUri}&scope=${scope}`
-    window.location.href = authUrl
+    window.location.href = `${API_BASE_URL}/auth/azure/start`
   }
 
   const validate = () => {
@@ -50,27 +46,28 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
-      const res = await fetch("http://0.0.0.0:8002/register", {
+      const res = await apiFetch("/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: formData.name,
           email: formData.email,
           password: formData.password,
+          role: "lawyer",
         }),
       })
 
       const data = await res.json()
 
       if (res.ok) {
-        toast.success("✅ Registration successful! You can now log in.")
+        toast.success("Registration successful! You can now log in.")
         setTimeout(() => (window.location.href = "/login"), 1500)
       } else {
         toast.error(`❌ Registration failed: ${data.detail || "Please try again."}`)
       }
     } catch (err) {
       console.error(err)
-      toast.error("⚠️ Connection error: Could not connect to the server.")
+      toast.error("Connection error: Could not connect to the server.")
     } finally {
       setIsLoading(false)
     }
@@ -92,10 +89,10 @@ export default function RegisterPage() {
         <div className="text-center mb-6">
           <a href="/" className="inline-flex items-center gap-2 mb-6">
             <Scale className="h-8 w-8 text-black" />
-            <span className="text-2xl font-semibold">Client Portal</span>
+            <span className="text-2xl font-semibold">Injury Case Portal</span>
           </a>
-          <h1 className="text-3xl font-bold mb-2">Create Lawyer Account</h1>
-          <p className="text-gray-600">Register to manage your clients and cases</p>
+          <h1 className="text-3xl font-bold mb-2">Create Staff Account</h1>
+          <p className="text-gray-600">Register to manage injury cases and client communication</p>
         </div>
 
         {/* Azure login button */}

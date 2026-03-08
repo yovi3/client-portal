@@ -2,15 +2,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# SQLite database URL (change this to PostgreSQL/MySQL in production)
-SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"
-# For PostgreSQL: "postgresql://user:password@localhost/dbname"
-# For MySQL: "mysql://user:password@localhost/dbname"
+from .config import get_settings
+
+settings = get_settings()
+SQLALCHEMY_DATABASE_URL = settings.database_url
 
 # Create engine
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, 
-    connect_args={"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
+    connect_args={"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {},
+    pool_pre_ping=True  # Important for keeping Azure connections alive
 )
 
 # Create SessionLocal class

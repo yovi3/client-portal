@@ -1,187 +1,206 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import React, { useEffect, useMemo, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import MainLayout from "@/components/layout/MainLayout";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "@/lib/api";
+import { getStoredUser, fetchCurrentUser } from "@/lib/auth";
+
+const getCaseParticipantLabel = (caseItem, role) => {
+  if (role === "client") {
+    const staff = caseItem.personnel?.map((person) => person.name).filter(Boolean) || [];
+    return staff.length ? `Team: ${staff.join(", ")}` : "Team: Not assigned";
+  }
+  const clients = caseItem.clients?.map((client) => client.name).filter(Boolean) || [];
+  return clients.length ? `Client: ${clients.join(", ")}` : "Client: Not assigned";
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
-
-  // --- STATE ---
-  const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      const storedUserData = localStorage.getItem("user");
-      return storedUserData ? JSON.parse(storedUserData) : null;
-    }
-    return null;
-  });
-
-  const [allCases, setAllCases] = useState([]); // Store fetched cases
-  const [isLoadingCases, setIsLoadingCases] = useState(false);
+  const [user, setUser] = useState(() => getStoredUser());
+  const [cases, setCases] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [dataError, setDataError] = useState(null);
+  const [unreadOnly, setUnreadOnly] = useState(true);
+  const [pendingByCase, setPendingByCase] = useState({});
 
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const [urgencyFilter, setUrgencyFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  
-  // --- EFFECT 1: AUTH & REDIRECT ---
   useEffect(() => {
-    if (!user) {
-      navigate("/login");
-    }
+    if (user) return;
+    fetchCurrentUser().then((currentUser) => {
+      if (currentUser) setUser(currentUser);
+      else navigate("/login");
+    });
   }, [user, navigate]);
 
-
-  // --- EFFECT 2: DATA FETCHING (Using the unified User ID) ---
   useEffect(() => {
-    if (!user || user.role !== 'lawyer') return; // Only lawyers fetch this dashboard view
+    if (!user) return;
 
     const fetchCases = async () => {
-      setIsLoadingCases(true);
+      setIsLoading(true);
       setDataError(null);
-      
       try {
-        // Use the unified user.id as the lawyer_id
-        const res = await fetch(`http://0.0.0.0:8002/lawyers/${user.id}/cases`);
-        
+        const res = await apiFetch("/cases");
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({ detail: "Failed to fetch cases." }));
-          throw new Error(errorData.detail || `HTTP error! Status: ${res.status}`);
+          throw new Error(errorData.detail || `HTTP error ${res.status}`);
         }
-
         const data = await res.json();
-        
-        if (Array.isArray(data)) {
-          setAllCases(data);
-        } else {
-          throw new Error("Invalid data format received.");
+        const caseList = Array.isArray(data) ? data : [];
+        setCases(caseList);
+
+        if (user.role === "client") {
+          const requestEntries = await Promise.all(
+            caseList.map(async (caseItem) => {
+              try {
+                const requestsRes = await apiFetch(`/cases/${caseItem.id}/requests`);
+                if (!requestsRes.ok) return [caseItem.id, { pending: 0, nextDeadline: null }];
+                const requests = await requestsRes.json();
+                const pending = (requests || []).filter((request) => request.status !== "completed").length;
+                const nextDeadline = (requests || [])
+                  .filter((request) => request.deadline)
+                  .map((request) => new Date(request.deadline))
+                  .sort((left, right) => left.getTime() - right.getTime())[0] || null;
+                return [caseItem.id, { pending, nextDeadline }];
+              } catch {
+                return [caseItem.id, { pending: 0, nextDeadline: null }];
+              }
+            })
+          );
+          setPendingByCase(Object.fromEntries(requestEntries));
         }
       } catch (err) {
         console.error("Case fetch error:", err);
         setDataError(err.message);
       } finally {
-        setIsLoadingCases(false);
+        setIsLoading(false);
       }
     };
 
     fetchCases();
-  }, [user]); 
+  }, [user]);
 
-  // --- FILTERING LOGIC ---
+  const unreadTotal = useMemo(
+    () => cases.reduce((sum, caseItem) => sum + (caseItem.unread_count || 0), 0),
+    [cases]
+  );
+  const pendingTasks = useMemo(
+    () => Object.values(pendingByCase).reduce((sum, value) => sum + (value.pending || 0), 0),
+    [pendingByCase]
+  );
 
-  const getStatusColor = (status) => ({
-    active: "bg-green-500/10 text-green-500 border-green-500/20",
-    pending: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-    closed: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  }[status] || "bg-gray-500/10 text-gray-500 border-gray-500/20");
-
-  const getPriorityColor = (priority) => ({
-    high: "bg-red-500/10 text-red-500 border-red-500/20",
-    medium: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-    low: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  }[priority] || "bg-gray-500/10 text-gray-500 border-gray-500/20");
-
-  const filteredCases = allCases.filter((c) => {
-    // Note: unreadMessages is now unread_messages from the backend schema
-    if (unreadOnly && c.unread_messages === 0) return false; 
-    if (urgencyFilter !== "all" && c.priority !== urgencyFilter) return false;
-    if (categoryFilter !== "all" && c.category !== categoryFilter) return false;
-    return true;
-  });
-
-  // --- EARLY RETURN: Unauthenticated/Loading ---
   if (!user) {
-    return <MainLayout><div className="p-8 text-center text-gray-500">Authenticating...</div></MainLayout>;
-  }
-
-  // --- EARLY RETURN: Client Role ---
-  if (user.role === 'client') {
     return (
       <MainLayout>
-        <Card>
-          <CardHeader><CardTitle>Client Dashboard</CardTitle></CardHeader>
-          <CardContent>
-            <p>Welcome, {user.name}. Your client-specific content goes here.</p>
-            {/* You would implement client-specific case fetching here: /clients/{user.id}/cases */}
-          </CardContent>
-        </Card>
+        <div className="p-8 text-center text-gray-500">Authenticating...</div>
       </MainLayout>
     );
   }
 
-  // --- MAIN LAWYER DASHBOARD RENDER ---
+  const visibleCases = cases.filter((caseItem) => {
+    if (!unreadOnly) return true;
+    return (caseItem.unread_count || 0) > 0;
+  });
+
+  if (user.role === "client") {
+    const nextActionCase =
+      cases.find((caseItem) => (caseItem.unread_count || 0) > 0) ||
+      cases.find((caseItem) => (pendingByCase[caseItem.id]?.pending || 0) > 0) ||
+      cases[0];
+
+    return (
+      <MainLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold">Client Overview</h1>
+            <p className="text-muted-foreground">Track your injury cases, deadlines, and secure messages.</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Active Cases</CardTitle></CardHeader>
+              <CardContent><p className="text-3xl font-semibold">{cases.length}</p></CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Unread Messages</CardTitle></CardHeader>
+              <CardContent><p className="text-3xl font-semibold">{unreadTotal}</p></CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Pending Document Tasks</CardTitle></CardHeader>
+              <CardContent><p className="text-3xl font-semibold">{pendingTasks}</p></CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader><CardTitle>Your Cases</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {isLoading && <div className="text-center text-gray-500">Loading cases...</div>}
+              {dataError && <div className="text-red-500">Error: {dataError}</div>}
+              {!isLoading && !dataError && cases.length === 0 && (
+                <div className="text-center text-gray-500">No cases assigned yet.</div>
+              )}
+              {cases.map((caseItem) => (
+                <button
+                  key={caseItem.id}
+                  type="button"
+                  onClick={() => navigate(`/cases/${caseItem.id}`)}
+                  className="w-full rounded-lg border p-4 text-left hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold">{caseItem.title}</p>
+                    <div className="flex items-center gap-2">
+                      {(caseItem.unread_count || 0) > 0 && <Badge variant="destructive">{caseItem.unread_count} new</Badge>}
+                      {(pendingByCase[caseItem.id]?.pending || 0) > 0 && (
+                        <Badge variant="secondary">{pendingByCase[caseItem.id].pending} pending docs</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">{caseItem.description || "No details available."}</p>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Button
-          variant={unreadOnly ? "default" : "outline"}
-          onClick={() => setUnreadOnly(!unreadOnly)}
-        >
-          Unread
+        <Button variant={unreadOnly ? "default" : "outline"} onClick={() => setUnreadOnly(!unreadOnly)}>
+          Unread Only
         </Button>
-
-        <Select onValueChange={setUrgencyFilter}>
-          <SelectTrigger className="w-28">
-            <SelectValue placeholder="Urgency" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-28">
-            <SelectValue placeholder="Category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="Property">Property</SelectItem>
-            <SelectItem value="Criminal">Criminal</SelectItem>
-            <SelectItem value="Corporate">Corporate</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent Cases (Lawyer: {user.name})</CardTitle>
+          <CardTitle>Recent Cases</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoadingCases && <div className="text-center text-gray-500">Loading cases...</div>}
-          {dataError && <div className="text-red-500">Error loading cases: {dataError}</div>}
-          
-          {!isLoadingCases && !dataError && filteredCases.length === 0 && (
-             <div className="text-center text-gray-500">No cases assigned.</div>
+          {isLoading && <div className="text-center text-gray-500">Loading cases...</div>}
+          {dataError && <div className="text-red-500">Error: {dataError}</div>}
+          {!isLoading && !dataError && visibleCases.length === 0 && (
+            <div className="text-center text-gray-500">No unread case updates.</div>
           )}
 
           <div className="space-y-3">
-            {filteredCases.map((c) => (
-              <div key={c.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer">
+            {visibleCases.map((caseItem) => (
+              <div
+                key={caseItem.id}
+                onClick={() => navigate(`/cases/${caseItem.id}`)}
+                className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
+              >
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="font-semibold">{c.title}</h3>
-                    <Badge variant="outline" className={getStatusColor(c.status)}>{c.status}</Badge>
-                    <Badge variant="outline" className={getPriorityColor(c.priority)}>{c.priority}</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-2">{c.description}</p>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    {/* ✅ FIXED: Use the nested client_user name from the backend model */}
-                    <span>Client: {c.client_user?.name || 'N/A'}</span>
-                    <span>Status: {c.status}</span> 
-                    {/* Updated date isn't in the schema, so we use status as a placeholder */}
-                  </div>
+                  <h3 className="font-semibold">{caseItem.title}</h3>
+                  <p className="text-sm text-muted-foreground mb-2">{caseItem.description || "No details available."}</p>
+                  <span className="text-xs text-muted-foreground">{getCaseParticipantLabel(caseItem, user.role)}</span>
                 </div>
-                {c.unread_messages > 0 && (
+                {(caseItem.unread_count || 0) > 0 && (
                   <Badge variant="destructive" className="h-6 w-6 rounded-full flex items-center justify-center p-0">
-                    {c.unread_messages}
+                    {caseItem.unread_count}
                   </Badge>
                 )}
               </div>

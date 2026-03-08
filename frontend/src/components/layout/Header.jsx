@@ -2,23 +2,18 @@
 
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Scale, Bell, User, LogOut } from "lucide-react";
+import { Scale, Bell, LogOut, ScanFace } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
 } from "@/components/ui/popover";
+import { apiFetch } from "@/lib/api";
+import { getStoredUser, fetchCurrentUser, clearStoredUser } from "@/lib/auth";
 
 export default function Header() {
-  const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      const storedUserData = localStorage.getItem("user");
-      return storedUserData ? JSON.parse(storedUserData) : null;
-    }
-    return null;
-  });
+  const [user, setUser] = useState(() => getStoredUser());
   
   const [notifications, setNotifications] = useState([]);
   const [hasUnread, setHasUnread] = useState(false);
@@ -26,10 +21,14 @@ export default function Header() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user && user.id && user.role) {
+    if (!user) {
+      fetchCurrentUser().then((u) => setUser(u));
+      return;
+    }
+    if (user.id && user.role) {
       const fetchNotifications = async () => {
         try {
-          const res = await fetch(`http://0.0.0.0:8002/users/${user.id}/notifications?role=${user.role}`);
+          const res = await apiFetch(`/users/${user.id}/notifications?role=${user.role}`);
           if (!res.ok) {
             throw new Error("Failed to fetch notifications");
           }
@@ -47,10 +46,26 @@ export default function Header() {
     }
   }, [user]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    try {
+      await apiFetch("/auth/logout", { method: "POST" });
+    } catch (e) {
+      console.error(e);
+    }
+    clearStoredUser();
     setUser(null);
     navigate("/login");
+  };
+
+  const getInitials = (name) => {
+    if (!name || typeof name !== "string") return "U";
+    const parts = name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (parts.length === 0) return "U";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
   // Function to format "time ago" (simplified)
@@ -79,11 +94,11 @@ export default function Header() {
 
   if (!user) {
     return (
-      <header className="border-b bg-card sticky top-0 z-50">
-        <div className="px-4 py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-50 border-b bg-card">
+        <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <Scale className="h-6 w-6 text-primary" />
-            <span className="text-xl font-semibold">Client Portal</span>
+            <Scale className="h-5 w-5 text-primary" />
+            <span className="text-lg font-semibold text-foreground">Injury Case Portal</span>
           </div>
         </div>
       </header>
@@ -91,24 +106,21 @@ export default function Header() {
   }
 
   return (
-    <header className="border-b bg-card sticky top-0 z-50">
-      <div className="px-4 py-4 flex items-center justify-between">
+    <header className="sticky top-0 z-50 border-b bg-card">
+      <div className="flex items-center justify-between gap-4 px-4 py-3">
         <div className="flex items-center gap-2">
-          <Scale className="h-6 w-6 text-primary" />
-          <span className="text-xl font-semibold">Client Portal</span>
-          <Badge variant="outline" className="ml-2">
-            {user.name}
-          </Badge>
+          <Scale className="h-5 w-5 text-primary" />
+          <span className="text-lg font-semibold text-foreground">Injury Case Portal</span>
         </div>
 
-        <div className="flex items-center gap-4 mr-6">
+        <div className="mr-1 flex items-center gap-2">
           {/* Notifications */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
+                <Bell className="h-4 w-4" />
                 {hasUnread && (
-                  <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
+                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full border border-background bg-red-500"></span>
                 )}
               </Button>
             </PopoverTrigger>
@@ -154,9 +166,17 @@ export default function Header() {
           {/* User menu */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <User className="h-5 w-5" />
-              </Button>
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-accent"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold leading-none text-primary-foreground">
+                  {getInitials(user.name)}
+                </span>
+                <span className="hidden md:inline text-sm leading-none font-medium text-foreground">
+                  {user.name}
+                </span>
+              </button>
             </PopoverTrigger>
             <PopoverContent side="bottom" align="end" className="w-48">
               <div className="flex flex-col space-y-2">
@@ -164,7 +184,12 @@ export default function Header() {
                   <p className="font-medium">{user.name}</p>
                   <p className="text-xs text-muted-foreground">{user.email}</p>
                 </div>
-                <Button variant="ghost" className="justify-start">Profile</Button>
+                <Button
+                  variant="ghost"
+                  className="justify-start"
+                >
+                  <ScanFace className="h-4 w-4 mr-2" /> Profile
+                </Button>
                 <Button
                   variant="ghost"
                   className="justify-start text-red-600"

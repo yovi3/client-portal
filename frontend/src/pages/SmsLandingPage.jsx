@@ -28,9 +28,9 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Toaster, toast } from "sonner"; // Import Sonner
 import { format } from "date-fns"; // Import date-fns for formatting
+import { API_BASE_URL, apiFetch } from "@/lib/api";
 
 // --- CONFIG ---
-const API_BASE_URL = "http://127.0.0.1:8002";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ACCEPTED_FILE_TYPES = ".pdf,.jpg,.jpeg,.png,.doc,.docx";
 
@@ -63,7 +63,7 @@ export default function SmsLandingPage() {
 
     const fetchRequestData = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/requests/${token}`);
+        const response = await apiFetch(`/requests/${token}`);
         if (!response.ok) {
           const errData = await response
             .json()
@@ -166,13 +166,10 @@ export default function SmsLandingPage() {
         formData.append(docId, upload.file, upload.name);
       });
 
-      const response = await fetch(
-        `${API_BASE_URL}/requests/${requestId}/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const response = await apiFetch(`/requests/${token}/upload`, {
+        method: "POST",
+        body: formData,
+      });
 
       if (!response.ok) {
         const errData = await response
@@ -245,9 +242,9 @@ export default function SmsLandingPage() {
   }
 
   // --- MAIN RENDER ---
-  const clientName = requestData?.case?.client_user?.name || "Client";
-  const caseTitle = requestData?.case?.title || "Case";
-  const lawyerName = requestData?.case?.assigned_lawyer_user?.name || "Lawyer";
+  const caseTitle = requestData?.case_title || "Case";
+  const lawyerName = requestData?.personnel_names?.[0] || "Case Team";
+  const firstClientName = requestData?.client_names?.[0] || "Client";
   const documents = requestData?.requested_documents || [];
   const deadline = requestData?.deadline;
 
@@ -271,7 +268,7 @@ export default function SmsLandingPage() {
           <CardContent className="space-y-3 text-sm">
             <div className="flex justify-between border-b pb-2">
               <span className="text-muted-foreground">Client:</span>
-              <span className="font-semibold text-gray-700">{clientName}</span>
+              <span className="font-semibold text-gray-700">{firstClientName}</span>
             </div>
             <div className="flex justify-between border-b pb-2">
               <span className="text-muted-foreground">Case:</span>

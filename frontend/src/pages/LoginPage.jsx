@@ -2,6 +2,12 @@ import React, { useState } from "react";
 import { Scale, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom"; // <-- ADDED
 import { toast } from "sonner"; // <-- ADDED
+import { API_BASE_URL, apiFetch } from "@/lib/api";
+
+const QUICK_LOGINS = {
+  admin: { email: "oliwierkuc@dsslaw.com", password: "password123" },
+  client: { email: "client@example.com", password: "password123" },
+};
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
@@ -25,17 +31,14 @@ export default function LoginPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-
+  const loginWithCredentials = async (email, password) => {
     try {
-      const res = await fetch("http://localhost:8002/login", {
+      const res = await apiFetch("/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: formData.email,
-          password: formData.password
+          email,
+          password
         }),
       });
 
@@ -66,6 +69,24 @@ export default function LoginPage() {
     }
   };
 
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+    await loginWithCredentials(formData.email, formData.password);
+  };
+
+  const handleQuickLogin = async (target) => {
+    const creds = QUICK_LOGINS[target];
+    if (!creds) return;
+    setFormData((prev) => ({
+      ...prev,
+      email: creds.email,
+      password: creds.password,
+    }));
+    setErrors({});
+    await loginWithCredentials(creds.email, creds.password);
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
@@ -76,9 +97,7 @@ export default function LoginPage() {
   };
 
   const handleAzureLogin = () => {
-    // This flow will redirect the user. The success/error handling
-    // will need to happen on the page Azure redirects *back* to.
-    window.location.href = "http://localhost:8002/azure-login";
+    window.location.href = `${API_BASE_URL}/auth/azure/start`
   };
 
   return (
@@ -87,13 +106,10 @@ export default function LoginPage() {
         <div className="text-center mb-6">
           <div className="inline-flex items-center gap-2 mb-6">
             <Scale className="h-8 w-8 text-black" />
-            <span className="text-2xl font-semibold">Client Portal</span>
+            <span className="text-2xl font-semibold">Injury Case Portal</span>
           </div>
           <h1 className="text-3xl font-bold mb-2">Welcome back</h1>
-          <p className="text-gray-600">Sign in to your account to continue</p>
-          <p className="text-gray-600">---</p>
-          <p className="text-gray-600">Lawyer account: lawyer@example.com:password123</p>
-          <p className="text-gray-600">Client account: client@example.com:password123</p>
+          <p className="text-gray-600">Sign in to review your injury cases and tasks</p>
         </div>
 
         {/* Azure login */}
@@ -109,6 +125,23 @@ export default function LoginPage() {
           <hr className="flex-1 border-black/20" />
           <span className="mx-2 text-black/50 text-sm">or continue with email</span>
           <hr className="flex-1 border-black/20" />
+        </div>
+
+        <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => handleQuickLogin("admin")}
+            className="w-full rounded-md border border-black bg-white py-2 text-sm font-medium text-black hover:bg-gray-100"
+          >
+            Login as Admin
+          </button>
+          <button
+            type="button"
+            onClick={() => handleQuickLogin("client")}
+            className="w-full rounded-md border border-black bg-white py-2 text-sm font-medium text-black hover:bg-gray-100"
+          >
+            Login as Client
+          </button>
         </div>
 
         {/* Manual login form */}
