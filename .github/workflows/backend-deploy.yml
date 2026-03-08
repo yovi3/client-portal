@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: 'your-backend-app-name-here'  # TODO: Replace with your actual App Service name
-  PYTHON_VERSION: '3.11'  # Update if using a different Python version
+  AZURE_WEBAPP_NAME: 'clientportaldss'  # TODO: Replace with your actual App Service name
+  PYTHON_VERSION: '3.14'  # Update if using a different Python version
 
 jobs:
   build-and-deploy:
