@@ -15,6 +15,10 @@ os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 
 app = FastAPI()
 
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "Backend is running"}
+
 
 @app.on_event("startup")
 def ensure_schema():
