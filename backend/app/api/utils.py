@@ -45,8 +45,8 @@ def set_auth_cookie(response: Response, user: models.User):
         settings.auth_cookie_name,
         token,
         httponly=True,
-        samesite="lax",
-        secure=settings.cookie_secure,
+        samesite="none" if settings.environment == "production" else "lax",
+        secure=True if settings.environment == "production" else settings.cookie_secure,
         max_age=max_age,
         path="/",
     )

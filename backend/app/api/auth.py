@@ -84,7 +84,12 @@ def auth_login(
 
 @router.post("/logout")
 def auth_logout(response: Response):
-    response.delete_cookie(settings.auth_cookie_name, path="/")
+    response.delete_cookie(
+        settings.auth_cookie_name, 
+        path="/",
+        samesite="none" if settings.environment == "production" else "lax",
+        secure=True if settings.environment == "production" else settings.cookie_secure,
+    )
     return {"status": "ok"}
 
 
@@ -190,7 +195,7 @@ def azure_callback(
         fallback_role=settings.azure_fallback_role or "client",
     )
 
-    response = RedirectResponse(url=f"{settings.client_base_url}/dashboard")
+    response = RedirectResponse(url=settings.azure_post_login_redirect_url)
     set_auth_cookie(response, user)
     response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
     response.delete_cookie(OAUTH_NONCE_COOKIE, path="/")
