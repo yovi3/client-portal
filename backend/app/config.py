@@ -32,9 +32,12 @@ class Settings:
         self.azure_client_id = _get_env("AZURE_CLIENT_ID", required=True)
         self.azure_tenant_id = _get_env("AZURE_TENANT_ID", required=True)
         self.azure_client_secret = _get_env("AZURE_CLIENT_SECRET", required=True)
+        self.backend_base_url = _get_env("BACKEND_BASE_URL", "http://localhost:8002")
         self.azure_redirect_uri = _get_env(
-            "AZURE_REDIRECT_URI", "http://localhost:8002/auth/azure/callback"
+            "AZURE_REDIRECT_URI",
+            f"{self.backend_base_url.rstrip('/')}/auth/azure/callback",
         )
+        self.azure_post_login_redirect_url = _get_env("AZURE_POST_LOGIN_REDIRECT_URL")
         self.azure_fallback_role = _get_env("AZURE_FALLBACK_ROLE", "client")
         self.azure_role_priority = [
             role.strip()
@@ -63,6 +66,8 @@ class Settings:
 
         # URLs / CORS
         self.client_base_url = _get_env("CLIENT_BASE_URL", "http://localhost:5173")
+        if not self.azure_post_login_redirect_url:
+            self.azure_post_login_redirect_url = f"{self.client_base_url.rstrip('/')}/dashboard"
         cors = _get_env(
             "CORS_ALLOW_ORIGINS",
             "http://localhost:3000,http://localhost:5173,http://0.0.0.0:8002,http://127.0.0.1:8002",
