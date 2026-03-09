@@ -164,40 +164,51 @@ def azure_callback(
         "code_verifier": oauth_verifier,
     }
     token_resp = requests.post(token_url, data=data, timeout=10)
-    token_resp.raise_for_status()
+    try:
+        token_resp.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Azure Token Exchange Error: {token_resp.text}")
+        raise HTTPException(status_code=400, detail=f"Azure Token Exchange Error: {token_resp.text}")
+    
     token_data = token_resp.json()
-    id_token = token_data.get("id_token")
-    access_token = token_data.get("access_token")
-    if not id_token:
-        raise HTTPException(status_code=401, detail="Missing id_token from Azure")
+    try:
+        id_token = token_data.get("id_token")
+        access_token = token_data.get("access_token")
+        if not id_token:
+            raise HTTPException(status_code=401, detail="Missing id_token from Azure")
 
-    payload = auth.verify_azure_token(id_token)
-    token_nonce = payload.get("nonce")
-    if oauth_nonce and token_nonce and oauth_nonce != token_nonce:
-        raise HTTPException(status_code=401, detail="Invalid token nonce")
+        payload = auth.verify_azure_token(id_token)
+        token_nonce = payload.get("nonce")
+        if oauth_nonce and token_nonce and oauth_nonce != token_nonce:
+            raise HTTPException(status_code=401, detail="Invalid token nonce")
 
-    aad_id = payload.get("oid")
-    email = payload.get("preferred_username") or payload.get("email")
-    name = payload.get("name") or email
-    if not aad_id or not email:
-        raise HTTPException(status_code=401, detail="Azure token missing oid or email")
+        aad_id = payload.get("oid")
+        email = payload.get("preferred_username") or payload.get("email")
+        name = payload.get("name") or email
+        if not aad_id or not email:
+            raise HTTPException(status_code=401, detail="Azure token missing oid or email")
 
-    group_ids = _extract_group_ids(payload, access_token)
-    resolved_role, role_source = _resolve_role_from_groups(group_ids)
-    user = crud.upsert_azure_user(
-        db=db,
-        aad_object_id=aad_id,
-        email=email,
-        name=name or email,
-        resolved_role=resolved_role,
-        group_ids=group_ids,
-        role_source=role_source,
-        fallback_role=settings.azure_fallback_role or "client",
-    )
+        group_ids = _extract_group_ids(payload, access_token)
+        resolved_role, role_source = _resolve_role_from_groups(group_ids)
+        user = crud.upsert_azure_user(
+            db=db,
+            aad_object_id=aad_id,
+            email=email,
+            name=name or email,
+            resolved_role=resolved_role,
+            group_ids=group_ids,
+            role_source=role_source,
+            fallback_role=settings.azure_fallback_role or "client",
+        )
 
-    response = RedirectResponse(url=settings.azure_post_login_redirect_url)
-    set_auth_cookie(response, user)
-    response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
-    response.delete_cookie(OAUTH_NONCE_COOKIE, path="/")
-    response.delete_cookie(OAUTH_VERIFIER_COOKIE, path="/")
-    return response
+        response = RedirectResponse(url=settings.azure_post_login_redirect_url)
+        set_auth_cookie(response, user)
+        response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
+        response.delete_cookie(OAUTH_NONCE_COOKIE, path="/")
+        response.delete_cookie(OAUTH_VERIFIER_COOKIE, path="/")
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error during Azure user processing/upsert: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"User Processing Error: {str(e)}")
