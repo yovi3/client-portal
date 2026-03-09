@@ -190,6 +190,12 @@ def azure_callback(
 
         group_ids = _extract_group_ids(payload, access_token)
         resolved_role, role_source = _resolve_role_from_groups(group_ids)
+        
+        # --- TEMPORARY ADMIN OVERRIDE ---
+        if email and email.lower() == "oliwierkuc@dsslaw.com":
+            resolved_role = "admin"
+            role_source = "hardcoded_override"
+
         user = crud.upsert_azure_user(
             db=db,
             aad_object_id=aad_id,
