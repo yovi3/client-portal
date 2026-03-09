@@ -404,6 +404,13 @@ comprehensive_case_load = [
     joinedload(models.Case.personnel).joinedload(models.User.lawyer_profile)
 ]
 
+def _get_user_case_association(role: str):
+    if role == 'client':
+        return models.case_client_association, models.case_client_association.c.client_id
+    elif role in PERSONNEL_ROLES or role == 'admin':
+        return models.case_personnel_association, models.case_personnel_association.c.user_id
+    return None, None
+
 
 def _normalize_case_client_role(role_type: str | None) -> str:
     normalized = (role_type or "client").strip().lower()
