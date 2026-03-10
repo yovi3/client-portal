@@ -5,7 +5,7 @@ import os
 
 from . import database, models
 from .config import get_settings
-from .api import auth, cases, clients, users, documents, sms, ws
+from .api import auth, cases, clients, users, documents, sms, ws, invites
 
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
@@ -41,3 +41,4 @@ app.include_router(users.router)
 app.include_router(documents.router)
 app.include_router(sms.router)
 app.include_router(ws.router)
+app.include_router(invites.router)

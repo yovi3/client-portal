@@ -6,8 +6,7 @@ import MainLayout from "../components/layout/MainLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Badge } from "../components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "../components/ui/select"
-import { motion } from "framer-motion"
+import { motion as Motion } from "framer-motion"
 import { Plus } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { apiFetch } from "@/lib/api"
@@ -17,8 +16,8 @@ export default function Cases() {
   const navigate = useNavigate()
   const [cases, setCases] = useState([])
   const [activeTab, setActiveTab] = useState("all")
-  const [urgencyFilter, setUrgencyFilter] = useState("all")
-  const [categoryFilter, setCategoryFilter] = useState("all")
+  const urgencyFilter = "all"
+  const categoryFilter = "all"
   const [user, setUser] = useState(null) // Added user state for context
 
   // --- 1. Load User from Local Storage ---
@@ -47,8 +46,7 @@ export default function Cases() {
         setCases(data || []);
       } catch (error) {
         console.error("Error fetching cases:", error);
-        // Fallback to mock data structure if API fails
-        setCases(mockCaseData);
+        setCases([]);
       }
     };
 
@@ -86,7 +84,7 @@ export default function Cases() {
 
   return (
     <MainLayout>
-      <motion.div className="p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+      <Motion.div className="p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
           <h1 className="text-3xl font-bold">Cases</h1>
 
@@ -137,7 +135,7 @@ export default function Cases() {
             {myCasesFiltered.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {myCasesFiltered.map((c) => (
-                  <motion.div
+                  <Motion.div
                     key={c.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -170,7 +168,7 @@ export default function Cases() {
                         </p>
                       </CardContent>
                     </Card>
-                  </motion.div>
+                  </Motion.div>
                 ))}
               </div>
             ) : (
@@ -182,7 +180,7 @@ export default function Cases() {
             {allCasesFiltered.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {allCasesFiltered.map((c) => (
-                  <motion.div
+                  <Motion.div
                     key={c.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -214,7 +212,7 @@ export default function Cases() {
                         </p>
                       </CardContent>
                     </Card>
-                  </motion.div>
+                  </Motion.div>
                 ))}
               </div>
             ) : (
@@ -222,7 +220,7 @@ export default function Cases() {
             )}
           </TabsContent>
         </Tabs>
-      </motion.div>
+      </Motion.div>
     </MainLayout>
   )
 }

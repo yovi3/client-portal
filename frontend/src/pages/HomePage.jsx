@@ -19,8 +19,8 @@ export default function HomePage() {
             <a href="/login">
               <Button variant="ghost">Sign In</Button>
             </a>
-            <a href="/register">
-              <Button>Create Account</Button>
+            <a href="/invite">
+              <Button>Accept Invite</Button>
             </a>
           </nav>
         </div>
@@ -33,9 +33,9 @@ export default function HomePage() {
             Injury Case Communication Portal
           </h1>
           <div className="flex items-center justify-center gap-4 flex-wrap">
-            <a href="/register">
+            <a href="/invite">
               <Button size="lg" className="text-lg px-8">
-                Sign Up
+                Accept Invite
               </Button>
             </a>
             <a href="/login">

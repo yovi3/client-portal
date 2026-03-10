@@ -41,6 +41,12 @@ import { format } from "date-fns"
 import { Toaster, toast } from "sonner" 
 import { API_BASE_URL, CLIENT_BASE_URL, getWsBaseUrl, apiFetch } from "@/lib/api"
 import { getStoredUser, fetchCurrentUser } from "@/lib/auth"
+import {
+  STAFF_ROLES,
+  formatItemLabel,
+  getDocumentRequestBody,
+  getDocumentRequestTitle,
+} from "@/lib/documentRequestText"
 
 // --- (NEW) API URL (moved to top level for global use) ---
 // --- UTILITY FUNCTIONS ---
@@ -49,18 +55,11 @@ const dateToIsoString = (date) => {
     return date.toISOString();
 };
 
-const STAFF_ROLES = new Set(["lawyer", "accountant", "paralegal", "legal assistant", "admin"]);
-
 const getLawyerName = (caseData) =>
   caseData?.assigned_lawyer_user?.name ||
   caseData?.personnel?.find((person) => person.role === "lawyer")?.name ||
   caseData?.personnel?.[0]?.name ||
   "DSS Team";
-
-const getClientName = (caseData) =>
-  caseData?.client_user?.name ||
-  caseData?.clients?.[0]?.name ||
-  "Client";
 
 const getConversationParticipantName = (caseData, currentUser) => {
   if (!caseData || !currentUser) return "Case Participant";
@@ -147,11 +146,11 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
   } = document_request;
   
   const lawyerName = getLawyerName(conversation._caseData);
-  const clientName = getClientName(conversation._caseData);
 
   const uploadedCount = requested_documents.filter(doc => doc.status === 'uploaded' || doc.status === 'reviewed').length;
   const totalCount = requested_documents.length;
   const hasAllUploads = totalCount > 0 && uploadedCount === totalCount;
+  const itemLabel = formatItemLabel(totalCount);
 
   // --- 1. LAWYER VIEW (Status Dashboard / "Preview") ---
   if (isLawyer) {
@@ -172,10 +171,10 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
                 </div>
                 <div>
                   <CardTitle className="text-base text-green-800">
-                    Documents received
+                    {getDocumentRequestTitle("admin")}
                   </CardTitle>
                   <p className="text-sm text-green-700">
-                    {uploadedCount} of {totalCount} items uploaded.
+                    {uploadedCount} of {totalCount} uploaded ({itemLabel}).
                   </p>
                 </div>
               </CardHeader>
@@ -206,10 +205,10 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
               </div>
               <div>
                 <CardTitle className="text-base text-gray-800">
-                  Request Sent to {clientName}
+                  {getDocumentRequestTitle("admin")}
                 </CardTitle>
                 <p className="text-sm text-gray-500">
-                  {uploadedCount} of {totalCount} items uploaded.
+                  {uploadedCount} of {totalCount} uploaded ({itemLabel}).
                 </p>
               </div>
             </CardHeader>
@@ -286,10 +285,10 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
               </div>
               <div>
                 <CardTitle className="text-base text-green-800">
-                  Documents received
+                  {getDocumentRequestTitle("client")}
                 </CardTitle>
                 <p className="text-sm text-green-700">
-                  From {lawyerName}
+                  {itemLabel} from {lawyerName}
                 </p>
               </div>
             </CardHeader>
@@ -316,10 +315,10 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
               </div>
               <div>
                 <CardTitle className="text-base text-blue-800">
-                  Action required: Document request
+                  {getDocumentRequestTitle("client")}
                 </CardTitle>
                 <p className="text-sm text-blue-700">
-                  From {lawyerName}
+                  {itemLabel} from {lawyerName}
                 </p>
               </div>
           </CardHeader>
@@ -768,6 +767,19 @@ export default function Messages() {
                       const isDocumentRequest = 
                         msg.message_type === "document_request" || 
                         (msg.document_request && Array.isArray(msg.document_request.requested_documents));
+                      const documentRequestTitle = getDocumentRequestTitle(user?.role);
+                      const documentRequestBody = getDocumentRequestBody(user?.role, msg.document_request, {
+                        clientCount: selectedConversation?._caseData?.clients?.length || 1,
+                      });
+                      const requestedDocuments = msg.document_request?.requested_documents || [];
+                      const uploadedCount = requestedDocuments.filter(
+                        (doc) => doc.status === "uploaded" || doc.status === "reviewed",
+                      ).length;
+                      const totalRequested = requestedDocuments.length;
+                      const hasUploads = uploadedCount > 0;
+                      const clientRequestCompleted =
+                        msg.document_request?.status === "completed" ||
+                        (totalRequested > 0 && uploadedCount === totalRequested);
 
                       return (
                         <div key={msg.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
@@ -792,38 +804,50 @@ export default function Messages() {
                                 }`}
                               >
                                 {isDocumentRequest && (
-                                  <p className="mb-1 text-xs font-semibold opacity-80">Document Request</p>
+                                  <p className="mb-1 text-xs font-semibold opacity-80">{documentRequestTitle}</p>
                                 )}
-                                <p className="text-sm leading-relaxed">{msg.content}</p>
+                                <p className="text-sm leading-relaxed">
+                                  {isDocumentRequest ? documentRequestBody : msg.content}
+                                </p>
                                 {isDocumentRequest && msg.document_request && (
                                   <div className="mt-2 space-y-1">
-                                    {(msg.document_request.requested_documents || []).map((doc) => (
+                                    {requestedDocuments.map((doc) => (
                                       <p key={doc.id} className="text-xs opacity-90">
-                                        - {doc.name} ({doc.status})
+                                        - {doc.name}
                                       </p>
                                     ))}
                                     <div className="pt-1">
                                       {STAFF_ROLES.has(user.role) ? (
-                                        <Button
-                                          size="sm"
-                                          variant={isOwn ? "secondary" : "outline"}
-                                          className="h-7"
-                                          onClick={() => handleOpenReviewModal(msg.document_request)}
-                                        >
-                                          Review uploads
-                                        </Button>
-                                      ) : (
-                                        msg.document_request.access_token && (
+                                        hasUploads ? (
                                           <Button
                                             size="sm"
                                             variant={isOwn ? "secondary" : "outline"}
                                             className="h-7"
-                                            onClick={() =>
-                                              window.open(`${CLIENT_BASE_URL}/requests/${msg.document_request.access_token}`, "_blank")
-                                            }
+                                            onClick={() => handleOpenReviewModal(msg.document_request)}
                                           >
-                                            Upload documents
+                                            Review uploads
                                           </Button>
+                                        ) : (
+                                          <p className="text-xs opacity-90">Pending client uploads.</p>
+                                        )
+                                      ) : (
+                                        clientRequestCompleted ? (
+                                          <p className="text-xs font-medium text-green-700">
+                                            Successfully uploaded document{totalRequested === 1 ? "" : "s"}.
+                                          </p>
+                                        ) : (
+                                          msg.document_request.access_token && (
+                                            <Button
+                                              size="sm"
+                                              variant={isOwn ? "secondary" : "outline"}
+                                              className="h-7"
+                                              onClick={() =>
+                                                window.open(`${CLIENT_BASE_URL}/requests/${msg.document_request.access_token}`, "_blank")
+                                              }
+                                            >
+                                              Upload documents
+                                            </Button>
+                                          )
                                         )
                                       )}
                                     </div>
@@ -900,15 +924,16 @@ export default function Messages() {
 
       {/* Document Request Modal */}
       <Dialog open={isRequestingDocs} onOpenChange={setIsRequestingDocs}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <FilePlus className="h-5 w-5 text-primary" />
               Request Documents from Client
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-6 py-4">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+            <div className="space-y-6 py-4">
             <div>
               <p className="text-sm text-muted-foreground mb-4">
                 Requesting documents for case:{" "}
@@ -1002,26 +1027,27 @@ export default function Messages() {
                 onChange={(e) => setNote(e.target.value)}
               />
             </div>
-
-            <div className="flex gap-3 pt-4">
-              <Button variant="outline" onClick={() => setIsRequestingDocs(false)} className="flex-1">
-                Cancel
-              </Button>
-              <Button
-                onClick={sendDocumentRequest}
-                disabled={requiredDocs.filter((d) => d.display_name.trim() !== "").length === 0 || isSendingRequest} 
-                className="flex-1"
-              >
-                {isSendingRequest ? (
-                    <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Sending...
-                    </>
-                ) : (
-                    "Send Request & Notify via SMS"
-                )}
-              </Button>
             </div>
+          </div>
+
+          <div className="shrink-0 border-t pt-4 flex gap-3">
+            <Button variant="outline" onClick={() => setIsRequestingDocs(false)} className="flex-1">
+              Cancel
+            </Button>
+            <Button
+              onClick={sendDocumentRequest}
+              disabled={requiredDocs.filter((d) => d.display_name.trim() !== "").length === 0 || isSendingRequest}
+              className="flex-1"
+            >
+              {isSendingRequest ? (
+                  <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Sending...
+                  </>
+              ) : (
+                  "Send Request & Notify via SMS"
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

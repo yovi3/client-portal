@@ -1,4 +1,5 @@
 from typing import List, Optional
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
@@ -13,9 +14,45 @@ from .ws import manager
 
 router = APIRouter(tags=["sms"])
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+
+def _candidate_webhook_urls(request: Request) -> list[str]:
+    # Twilio signs exact URL. Behind reverse proxies, request.url can differ from public URL.
+    path_and_query = request.url.path
+    if request.url.query:
+        path_and_query = f"{path_and_query}?{request.url.query}"
+
+    candidates = [str(request.url)]
+    if settings.backend_base_url:
+        candidates.append(f"{settings.backend_base_url.rstrip('/')}{path_and_query}")
+
+    # Try protocol-swapped variants for proxy deployments (http<->https).
+    for url in list(candidates):
+        if url.startswith("http://"):
+            candidates.append(url.replace("http://", "https://", 1))
+        elif url.startswith("https://"):
+            candidates.append(url.replace("https://", "http://", 1))
+
+    # Preserve insertion order, remove duplicates.
+    return list(dict.fromkeys(candidates))
+
+
+def _validate_twilio_signature(request: Request, form_payload: dict, signature: str) -> bool:
+    if not settings.twilio_auth_token:
+        return False
+    validator = RequestValidator(settings.twilio_auth_token)
+    for candidate_url in _candidate_webhook_urls(request):
+        try:
+            if validator.validate(candidate_url, form_payload, signature):
+                return True
+        except Exception:
+            continue
+    return False
 
 
 @router.post("/api/twilio/webhook/sms")
+@router.post("/twilio/webhook/sms")
 async def twilio_sms_webhook(
     request: Request,
     db: Session = Depends(database.get_db),
@@ -25,18 +62,28 @@ async def twilio_sms_webhook(
 
     form_data = await request.form()
     signature = request.headers.get("X-Twilio-Signature", "")
-    validator = RequestValidator(settings.twilio_auth_token)
-    if not validator.validate(str(request.url), dict(form_data), signature):
-        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+    payload = {key: value for key, value in form_data.multi_items()}
+    if settings.twilio_validate_signature:
+        if not _validate_twilio_signature(request, payload, signature):
+            logger.warning("Twilio signature validation failed for inbound SMS. url=%s", str(request.url))
+            raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+    else:
+        logger.warning("Twilio signature validation disabled by TWILIO_VALIDATE_SIGNATURE")
 
-    client_phone = form_data.get("From")
-    sms_body = form_data.get("Body")
+    client_phone = payload.get("From")
+    sms_body = payload.get("Body")
     if not client_phone or not sms_body:
         raise HTTPException(status_code=400, detail="Missing 'From' or 'Body' data")
 
     client = crud.get_user_by_phone(db, client_phone)
     client_id = client.id if client else None
-    crud.create_awaiting_sms(db, phone=client_phone, body=sms_body, client_id=client_id)
+    created = crud.create_awaiting_sms(db, phone=client_phone, body=sms_body, client_id=client_id)
+    logger.info(
+        "Inbound SMS stored in inbox. awaiting_sms_id=%s from=%s client_id=%s",
+        created.id,
+        client_phone,
+        client_id,
+    )
 
     return Response(content="<Response></Response>", media_type="application/xml")
 
@@ -95,6 +142,7 @@ def get_sms_inbox(
     current_user: models.User = Depends(get_current_user),
 ):
     require_role(current_user, PERSONNEL_ROLES)
+    crud.reconcile_pending_sms_client_matches(db)
     return crud.get_awaiting_sms(db, skip=skip, limit=limit, client_id=client_id)
 
 
@@ -106,6 +154,7 @@ def get_sms_inbox_threads(
     current_user: models.User = Depends(get_current_user),
 ):
     require_role(current_user, PERSONNEL_ROLES)
+    crud.reconcile_pending_sms_client_matches(db)
     return crud.get_sms_inbox_threads(db, skip=skip, limit=limit)
 
 

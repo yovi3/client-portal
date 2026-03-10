@@ -4,7 +4,6 @@ import React from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import HomePage from "@/pages/HomePage";
 import LoginPage from "@/pages/LoginPage";
-import RegisterPage from "@/pages/RegisterPage";
 import Dashboard from "@/pages/Dashboard";
 import Cases from "@/pages/Cases";
 import Contacts from "@/pages/Contacts";
@@ -16,6 +15,7 @@ import SmsLandingPage from './pages/SmsLandingPage'
 import CaseDetail from '@/pages/CaseDetail'
 import CreateCase from '@/pages/CreateCase'
 import AdminDashboard from "@/pages/AdminDashboard";
+import InviteAcceptPage from "@/pages/InviteAcceptPage";
 import { RequireAuth, RequireRole } from "@/components/auth/RouteGuards";
 
 export default function App() {
@@ -26,7 +26,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/home" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/invite" element={<InviteAcceptPage />} />
       <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
       <Route path="/cases" element={<RequireAuth><Cases /></RequireAuth>} />
       <Route path="/contacts" element={<RequireRole allowedRoles={personnelRoles}><Contacts /></RequireRole>} />

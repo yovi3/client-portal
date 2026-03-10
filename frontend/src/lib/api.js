@@ -7,12 +7,23 @@ const getWsBaseUrl = () => {
   return API_BASE_URL;
 };
 
-const apiFetch = (path, options = {}) => {
+const apiFetch = async (path, options = {}) => {
   const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
-  return fetch(url, {
+  const response = await fetch(url, {
     credentials: "include",
     ...options,
   });
+
+  // Global session-expiry handling: clear local auth state and force login.
+  if (response.status === 401 && typeof window !== "undefined") {
+    localStorage.removeItem("user");
+    const isLoginPage = window.location.pathname === "/login";
+    if (!isLoginPage) {
+      window.location.href = "/login";
+    }
+  }
+
+  return response;
 };
 
 export { API_BASE_URL, CLIENT_BASE_URL, getWsBaseUrl, apiFetch };

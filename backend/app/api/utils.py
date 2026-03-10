@@ -21,6 +21,11 @@ def require_admin_user(user: models.User):
         raise HTTPException(status_code=403, detail="Admin role required.")
 
 
+def require_permission(db: Session, user: models.User, permission: str):
+    if not crud.role_has_permission(db, user.role, permission):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def ensure_case_access(db: Session, user: models.User, case_id: int) -> models.Case:
     case = crud.get_case_by_id(db, case_id)
     if not case:

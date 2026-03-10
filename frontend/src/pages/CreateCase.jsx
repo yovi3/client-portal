@@ -11,7 +11,7 @@ import { Label } from "../components/ui/label"
 import { Badge } from "../components/ui/badge"
 import { ArrowLeft, X, Search } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { motion } from "framer-motion"
+import { motion as Motion } from "framer-motion"
 import { apiFetch } from "@/lib/api"
 
 export default function CreateCase() {
@@ -157,7 +157,7 @@ export default function CreateCase() {
 
   return (
     <MainLayout>
-      <motion.div
+      <Motion.div
         className="p-6 max-w-6xl mx-auto"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -339,7 +339,7 @@ export default function CreateCase() {
             </Button>
           </div>
         </form>
-      </motion.div>
+      </Motion.div>
     </MainLayout>
   )
 }

@@ -3,6 +3,7 @@ import requests
 import hashlib
 import base64
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from fastapi.responses import RedirectResponse
@@ -19,11 +20,34 @@ settings = get_settings()
 OAUTH_VERIFIER_COOKIE = "oauth_verifier"
 AZURE_SCOPE = "openid profile email User.Read offline_access"
 GRAPH_MEMBER_GROUPS_URL = "https://graph.microsoft.com/v1.0/me/getMemberGroups"
+GRAPH_MEMBER_OF_URL = "https://graph.microsoft.com/v1.0/me/memberOf?$select=id,displayName"
 logger = logging.getLogger(__name__)
 
 
-def _resolve_role_from_groups(group_ids: list[str]) -> tuple[str | None, str | None]:
-    matches = {settings.azure_group_role_map.get(group_id) for group_id in group_ids}
+def _normalize_group_key(group_key: str) -> str:
+    return (group_key or "").strip().lower()
+
+
+UUID_PATTERN = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+)
+
+
+def _looks_like_uuid(value: str) -> bool:
+    return bool(UUID_PATTERN.match((value or "").strip()))
+
+
+def _contains_name_based_groups(values: list[str]) -> bool:
+    return any(value and not _looks_like_uuid(value) for value in values)
+
+
+def _resolve_role_from_groups(group_identifiers: list[str]) -> tuple[str | None, str | None]:
+    normalized_identifiers = {_normalize_group_key(group_id) for group_id in group_identifiers}
+    normalized_role_map = {
+        _normalize_group_key(group_id): role
+        for group_id, role in settings.azure_group_role_map.items()
+    }
+    matches = {normalized_role_map.get(group_id) for group_id in normalized_identifiers}
     matches = {role for role in matches if role}
     for role in settings.azure_role_priority:
         if role in matches:
@@ -51,6 +75,33 @@ def _fetch_graph_group_ids(access_token: str | None) -> list[str]:
     return []
 
 
+def _fetch_graph_group_names(access_token: str | None) -> list[str]:
+    if not access_token:
+        return []
+    try:
+        response = requests.get(
+            GRAPH_MEMBER_OF_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+        values = data.get("value", [])
+        if not isinstance(values, list):
+            return []
+        names: list[str] = []
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            display_name = value.get("displayName")
+            if display_name:
+                names.append(str(display_name))
+        return names
+    except Exception as exc:
+        logger.warning("Failed to fetch Azure group names from Graph: %s", exc)
+    return []
+
+
 def _extract_group_ids(payload: dict, access_token: str | None) -> list[str]:
     token_groups = payload.get("groups")
     if isinstance(token_groups, list):
@@ -61,6 +112,16 @@ def _extract_group_ids(payload: dict, access_token: str | None) -> list[str]:
         return _fetch_graph_group_ids(access_token)
 
     return _fetch_graph_group_ids(access_token)
+
+
+def _extract_group_identifiers(payload: dict, access_token: str | None) -> tuple[list[str], list[str]]:
+    group_ids = _extract_group_ids(payload, access_token)
+    # Fetch group names only when config seems to rely on names.
+    configured_group_keys = list(settings.azure_group_role_map.keys()) + list(settings.azure_allowed_group_ids)
+    requires_name_lookup = any(key and not _looks_like_uuid(key) for key in configured_group_keys)
+    group_names = _fetch_graph_group_names(access_token) if requires_name_lookup else []
+    combined = list(dict.fromkeys([*group_ids, *group_names]))
+    return group_ids, combined
 
 
 @router.post("/login", response_model=schemas.User)
@@ -185,16 +246,63 @@ def azure_callback(
         aad_id = payload.get("oid")
         email = payload.get("preferred_username") or payload.get("email")
         name = payload.get("name") or email
+        token_tenant_id = payload.get("tid")
         if not aad_id or not email:
             raise HTTPException(status_code=401, detail="Azure token missing oid or email")
+        if settings.azure_tenant_id and token_tenant_id != settings.azure_tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant is not allowed.")
 
-        group_ids = _extract_group_ids(payload, access_token)
-        resolved_role, role_source = _resolve_role_from_groups(group_ids)
-        
-        # --- TEMPORARY ADMIN OVERRIDE ---
-        if email and email.lower() == "oliwierkuc@dsslaw.com" or "kseba@dsslaw.com":
-            resolved_role = "admin"
-            role_source = "hardcoded_override"
+        group_ids, group_identifiers = _extract_group_identifiers(payload, access_token)
+        configured_allowed_groups = list(set(settings.azure_allowed_group_ids) or set(settings.azure_group_role_map.keys()))
+        normalized_allowed_groups = {
+            _normalize_group_key(group_id)
+            for group_id in configured_allowed_groups
+            if _normalize_group_key(group_id)
+        }
+        if not normalized_allowed_groups:
+            raise HTTPException(status_code=500, detail="Azure allowed groups are not configured.")
+        normalized_user_groups = {_normalize_group_key(group_id) for group_id in group_identifiers}
+        uses_name_based_allowed_groups = _contains_name_based_groups(configured_allowed_groups)
+        received_name_based_groups = _contains_name_based_groups(group_identifiers)
+        if uses_name_based_allowed_groups and not received_name_based_groups:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Access denied. Portal allowlist uses Entra group names, but this login returned only group IDs "
+                    "(or no groups). Configure AZURE_GROUP_ROLE_MAP / AZURE_ALLOWED_GROUP_IDS with Entra group "
+                    "Object IDs, or grant Microsoft Graph GroupMember.Read.All consent."
+                ),
+            )
+        if not normalized_user_groups.intersection(normalized_allowed_groups):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Access denied. Your Microsoft account is not assigned to this portal. "
+                    "Please ask your administrator to add you to DSS-CP-Admin or DSS-CP-User."
+                ),
+            )
+        resolved_role, role_source = _resolve_role_from_groups(group_identifiers)
+        if not resolved_role:
+            using_name_based_mapping = any(
+                key and not _looks_like_uuid(key)
+                for key in settings.azure_group_role_map.keys()
+            )
+            if using_name_based_mapping:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "Access denied. Group-name mapping is configured, but Microsoft Graph group-name access "
+                        "is not available for this app. Ask your admin to grant GroupMember.Read.All consent "
+                        "or switch AZURE_GROUP_ROLE_MAP keys to Entra group object IDs."
+                    ),
+                )
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Access denied. Your Microsoft group is recognized, but no portal role is configured. "
+                    "Please ask an administrator to map your Entra group to a portal role."
+                ),
+            )
 
         user = crud.upsert_azure_user(
             db=db,

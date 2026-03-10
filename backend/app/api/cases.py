@@ -89,7 +89,8 @@ def create_case(
     current_user: models.User = Depends(get_current_user),
 ):
     require_role(current_user, PERSONNEL_ROLES)
-    if current_user.id not in case.personnel_ids:
+    # Auto-assign creator only for non-admin personnel roles.
+    if current_user.role != "admin" and current_user.id not in case.personnel_ids:
         case = case.model_copy(update={"personnel_ids": case.personnel_ids + [current_user.id]})
     client_assignments = list(case.client_assignments or [])
     if not client_assignments and case.client_ids:
@@ -100,8 +101,6 @@ def create_case(
     primary_client = crud.get_user_by_id(db, primary_client_id) if primary_client_id else None
     if not primary_client or primary_client.role != "client":
         raise HTTPException(status_code=404, detail=f"Primary Client ID {primary_client_id} not found or not a client.")
-    if not primary_client.client_profile or not primary_client.client_profile.phone:
-        raise HTTPException(status_code=400, detail="Primary client does not have a phone number required for SMS integration.")
 
     db_case = crud.create_case(db, case)
     return _to_case_schema(db, db_case, 0, current_user)

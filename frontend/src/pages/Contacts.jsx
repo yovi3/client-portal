@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Plus, Search, Edit2, Trash2, Phone, Mail, MapPin, User, Loader2, Briefcase, Scale } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion as Motion, AnimatePresence } from "framer-motion"
 import { apiFetch } from "@/lib/api"
 
 export default function Contacts() {
@@ -156,7 +156,7 @@ export default function Contacts() {
 
   return (
     <MainLayout>
-      <motion.div
+      <Motion.div
         className="p-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -259,9 +259,9 @@ export default function Contacts() {
           </div>
         ) : filteredContacts.length > 0 ? (
           <AnimatePresence mode="popLayout">
-            <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" layout>
+            <Motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" layout>
               {filteredContacts.map((c, idx) => (
-                <motion.div
+                <Motion.div
                   key={c.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -332,13 +332,13 @@ export default function Contacts() {
                       </Badge>
                     </div>
                   </Card>
-                </motion.div>
+                </Motion.div>
               ))}
-            </motion.div>
+            </Motion.div>
           </AnimatePresence>
         ) : (
           /* Enhanced empty state with better visual appeal */
-          <motion.div
+          <Motion.div
             className="text-center py-16 bg-muted/20 rounded-xl border-2 border-dashed"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -355,9 +355,9 @@ export default function Contacts() {
                 <Plus className="h-4 w-4" /> Add Your First Contact
               </Button>
             )}
-          </motion.div>
+          </Motion.div>
         )}
-      </motion.div>
+      </Motion.div>
     </MainLayout>
   )
 }

@@ -105,11 +105,6 @@ export default function Dashboard() {
   });
 
   if (user.role === "client") {
-    const nextActionCase =
-      cases.find((caseItem) => (caseItem.unread_count || 0) > 0) ||
-      cases.find((caseItem) => (pendingByCase[caseItem.id]?.pending || 0) > 0) ||
-      cases[0];
-
     return (
       <MainLayout>
         <div className="space-y-6">
@@ -153,7 +148,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2">
                       {(caseItem.unread_count || 0) > 0 && <Badge variant="destructive">{caseItem.unread_count} new</Badge>}
                       {(pendingByCase[caseItem.id]?.pending || 0) > 0 && (
-                        <Badge variant="secondary">{pendingByCase[caseItem.id].pending} pending docs</Badge>
+                        <Badge variant="secondary">{pendingByCase[caseItem.id].pending} pending documents</Badge>
                       )}
                     </div>
                   </div>

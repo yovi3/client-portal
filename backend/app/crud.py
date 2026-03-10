@@ -7,6 +7,7 @@ import random
 import string
 import secrets 
 import json
+import hashlib
 from fastapi import HTTPException # Import HTTPException for use in CRUD functions
 
 
@@ -44,6 +45,59 @@ def generate_case_serial(db: Session, length: int = 8) -> str:
         existing_case = db.query(models.Case).filter(models.Case.case_serial == serial).first()
         if not existing_case:
             return serial
+
+
+def generate_case_number(db: Session) -> int:
+    """
+    Generates the next unique numeric case number.
+    Uses max+1 strategy with retry guard for unique conflicts.
+    """
+    for _ in range(10):
+        max_case_number = db.query(func.max(models.Case.case_number)).scalar()
+        next_number = (max_case_number or 0) + 1
+        exists = db.query(models.Case.id).filter(models.Case.case_number == next_number).first()
+        if not exists:
+            return int(next_number)
+    raise HTTPException(status_code=500, detail="Could not generate unique case number.")
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _coerce_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _normalize_phone_value(phone: Optional[str]) -> Optional[str]:
+    value = (phone or "").strip()
+    if not value:
+        return None
+    has_plus_prefix = value.startswith("+")
+    digits = "".join(char for char in value if char.isdigit())
+    if not digits:
+        return None
+    if has_plus_prefix:
+        return f"+{digits}"
+    return digits
+
+
+def _phones_match(phone_a: Optional[str], phone_b: Optional[str]) -> bool:
+    normalized_a = _normalize_phone_value(phone_a)
+    normalized_b = _normalize_phone_value(phone_b)
+    if not normalized_a or not normalized_b:
+        return False
+    if normalized_a == normalized_b:
+        return True
+    digits_a = normalized_a.lstrip("+")
+    digits_b = normalized_b.lstrip("+")
+    if digits_a == digits_b:
+        return True
+    if len(digits_a) >= 10 and len(digits_b) >= 10 and digits_a[-10:] == digits_b[-10:]:
+        return True
+    return False
 
 
 # =========================================================================
@@ -93,9 +147,24 @@ def get_user_by_aad(db: Session, aad_id: str) -> Optional[models.User]:
 
 def get_user_by_phone(db: Session, phone_number: str) -> Optional[models.User]:
     """Retrieves a user based on the phone number in the client profile."""
-    profile = db.query(models.ClientProfile)\
-                .filter(models.ClientProfile.phone == phone_number)\
-                .first()
+    raw_phone = (phone_number or "").strip()
+    normalized_phone = _normalize_phone_value(raw_phone)
+
+    exact_candidates = [candidate for candidate in {raw_phone, normalized_phone} if candidate]
+    profile = None
+    if exact_candidates:
+        profile = (
+            db.query(models.ClientProfile)
+            .filter(models.ClientProfile.phone.in_(exact_candidates))
+            .first()
+        )
+    if not profile and normalized_phone:
+        # Backward-compatible fallback for legacy formatted phone numbers.
+        all_profiles = db.query(models.ClientProfile).filter(models.ClientProfile.phone.isnot(None)).all()
+        profile = next(
+            (candidate for candidate in all_profiles if _phones_match(candidate.phone, normalized_phone)),
+            None,
+        )
     if profile:
         return get_user_by_id(db, profile.user_id)
     return None
@@ -134,9 +203,10 @@ def create_user(db: Session, user_data: schemas.UserCreate) -> models.User:
              db_profile.aad_id = profile_data["aad_id"]
 
     elif user_data.role == 'client':
+        normalized_phone = _normalize_phone_value(profile_data.get("phone"))
         db_profile = models.ClientProfile(
             user_id=db_user.id,
-            phone=profile_data.get("phone"), 
+            phone=normalized_phone,
             address=profile_data.get("address")
         )
     else:
@@ -305,6 +375,22 @@ def get_role_permissions(db: Session, role: Optional[str] = None) -> List[models
     return query.order_by(models.RolePermission.role.asc(), models.RolePermission.permission.asc()).all()
 
 
+def role_has_permission(db: Session, role: str, permission: str) -> bool:
+    normalized_role = (role or "").strip().lower()
+    normalized_permission = (permission or "").strip().lower()
+    if not normalized_role or not normalized_permission:
+        return False
+    return (
+        db.query(models.RolePermission.id)
+        .filter(
+            models.RolePermission.role == normalized_role,
+            models.RolePermission.permission == normalized_permission,
+        )
+        .first()
+        is not None
+    )
+
+
 def create_role_permission(
     db: Session,
     role: str,
@@ -342,6 +428,152 @@ def delete_role_permission(db: Session, permission_id: int) -> bool:
     db.delete(record)
     db.commit()
     return True
+
+
+def _hash_invite_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _invite_status(invite: models.Invite, now: Optional[datetime] = None) -> str:
+    timestamp = _coerce_utc(now) if now else _utc_now()
+    if invite.used_at:
+        return "used"
+    if _coerce_utc(invite.expires_at) <= timestamp:
+        return "expired"
+    return "pending"
+
+
+def serialize_invite(invite: models.Invite) -> dict[str, Any]:
+    return {
+        "id": invite.id,
+        "invited_email": invite.invited_email,
+        "role": invite.role,
+        "invited_by_user_id": invite.invited_by_user_id,
+        "expires_at": invite.expires_at,
+        "used_at": invite.used_at,
+        "accepted_user_id": invite.accepted_user_id,
+        "created_at": invite.created_at,
+        "status": _invite_status(invite),
+        "prefill_first_name": invite.prefill_first_name,
+        "prefill_last_name": invite.prefill_last_name,
+        "prefill_phone": invite.prefill_phone,
+        "prefill_address": invite.prefill_address,
+    }
+
+
+def create_invite(
+    db: Session,
+    email: str,
+    invited_by_user_id: int,
+    expires_days: int,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    phone: Optional[str] = None,
+    address: Optional[str] = None,
+) -> Tuple[models.Invite, str]:
+    normalized_email = (email or "").strip().lower()
+    if not normalized_email:
+        raise HTTPException(status_code=400, detail="Email is required.")
+    if get_user_by_email(db, normalized_email):
+        raise HTTPException(status_code=409, detail="User with this email already exists.")
+
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = _hash_invite_token(raw_token)
+    now = _utc_now()
+    expires_at = now + timedelta(days=max(1, expires_days))
+
+    invite = models.Invite(
+        invited_email=normalized_email,
+        role="client",
+        token_hash=token_hash,
+        invited_by_user_id=invited_by_user_id,
+        expires_at=expires_at,
+        prefill_first_name=(first_name or "").strip() or None,
+        prefill_last_name=(last_name or "").strip() or None,
+        prefill_phone=(phone or "").strip() or None,
+        prefill_address=(address or "").strip() or None,
+    )
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+    return invite, raw_token
+
+
+def list_invites(
+    db: Session,
+    status: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 200,
+) -> List[models.Invite]:
+    query = db.query(models.Invite)
+    now = _utc_now()
+    normalized_status = (status or "").strip().lower()
+    if normalized_status == "pending":
+        query = query.filter(models.Invite.used_at.is_(None), models.Invite.expires_at > now)
+    elif normalized_status == "used":
+        query = query.filter(models.Invite.used_at.isnot(None))
+    elif normalized_status == "expired":
+        query = query.filter(models.Invite.used_at.is_(None), models.Invite.expires_at <= now)
+    elif normalized_status:
+        raise HTTPException(status_code=400, detail="Invalid invite status.")
+    return query.order_by(models.Invite.created_at.desc(), models.Invite.id.desc()).offset(skip).limit(limit).all()
+
+
+def get_invite_by_token(db: Session, token: str) -> Optional[models.Invite]:
+    token_hash = _hash_invite_token(token)
+    return db.query(models.Invite).filter(models.Invite.token_hash == token_hash).first()
+
+
+def get_valid_invite_by_token(db: Session, token: str) -> models.Invite:
+    invite = get_invite_by_token(db, token)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found.")
+    if invite.used_at:
+        raise HTTPException(status_code=400, detail="Invite already used.")
+    if _coerce_utc(invite.expires_at) <= _utc_now():
+        raise HTTPException(status_code=400, detail="Invite expired.")
+    return invite
+
+
+def accept_invite(
+    db: Session,
+    token: str,
+    first_name: str,
+    last_name: str,
+    phone: str,
+    address: str,
+    password: str,
+) -> models.User:
+    invite = get_valid_invite_by_token(db, token)
+
+    existing = get_user_by_email(db, invite.invited_email)
+    if existing:
+        raise HTTPException(status_code=409, detail="User with this email already exists.")
+
+    full_name = f"{(first_name or '').strip()} {(last_name or '').strip()}".strip()
+    if not full_name:
+        raise HTTPException(status_code=400, detail="First name and last name are required.")
+
+    user = create_user(
+        db,
+        schemas.UserCreate(
+            email=invite.invited_email,
+            name=full_name,
+            password=password,
+            role="client",
+            profile_data={
+                "phone": (phone or "").strip(),
+                "address": (address or "").strip(),
+                "auth_provider": "local",
+                "effective_role_source": "invite",
+            },
+        ),
+    )
+    invite.used_at = _utc_now()
+    invite.accepted_user_id = user.id
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def update_user_role(
@@ -562,12 +794,12 @@ def create_case(db: Session, case: schemas.CaseCreate) -> models.Case:
     db_case = models.Case(
         title=case.title,
         description=case.description,
+        case_number=generate_case_number(db),
         case_serial=generate_case_serial(db),
         sms_id_tag=generate_sms_tag(db),
     )
     db.add(db_case)
     db.flush()
-    db_case.case_number = db_case.id
     
     # 2. Assign Clients (M2M)
     for client_assignment in client_assignments:
@@ -830,8 +1062,9 @@ def get_unread_message_notifications(db: Session, user_id: int, role: str, limit
 # =========================================================================
 
 def create_awaiting_sms(db: Session, phone: str, body: str, client_id: Optional[int] = None) -> models.AwaitingSMS:
+    normalized_phone = _normalize_phone_value(phone) or (phone or "").strip()
     db_awaiting = models.AwaitingSMS(
-        client_phone_number=phone,
+        client_phone_number=normalized_phone,
         sms_body=body,
         client_id=client_id
     )
@@ -915,6 +1148,24 @@ def get_sms_inbox_threads(
         )
         for r in results
     ]
+
+
+def reconcile_pending_sms_client_matches(db: Session) -> int:
+    """Best-effort backfill: link pending SMS rows to clients by phone."""
+    pending_unknown = (
+        db.query(models.AwaitingSMS)
+        .filter(models.AwaitingSMS.status == "pending", models.AwaitingSMS.client_id.is_(None))
+        .all()
+    )
+    updated = 0
+    for row in pending_unknown:
+        matched_user = get_user_by_phone(db, row.client_phone_number)
+        if matched_user:
+            row.client_id = matched_user.id
+            updated += 1
+    if updated:
+        db.commit()
+    return updated
 
 # =========================================================================
 # 6. DOCUMENT REQUEST CRUD
@@ -1149,7 +1400,7 @@ def update_client(db: Session, client_id: int, client_update: schemas.ClientUpda
     # Update Profile fields
     if user.client_profile:
         if client_update.phone:
-            user.client_profile.phone = client_update.phone
+            user.client_profile.phone = _normalize_phone_value(client_update.phone)
         if client_update.address:
             user.client_profile.address = client_update.address
             

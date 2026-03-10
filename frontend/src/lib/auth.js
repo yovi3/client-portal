@@ -26,11 +26,15 @@ export const clearStoredUser = () => {
 export const fetchCurrentUser = async () => {
   try {
     const res = await apiFetch("/auth/me");
-    if (!res.ok) return null;
+    if (!res.ok) {
+      clearStoredUser();
+      return null;
+    }
     const data = await res.json();
     setStoredUser(data);
     return data;
   } catch {
+    clearStoredUser();
     return null;
   }
 };

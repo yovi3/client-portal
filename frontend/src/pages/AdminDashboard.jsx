@@ -53,6 +53,7 @@ const PREDEFINED_PERMISSIONS = [
   "users:view",
   "users:manage",
   "roles:manage",
+  "invites:manage",
 ];
 const ADMIN_TABS = ["cases", "roles", "role-manager", "documents"];
 const ADMIN_LAST_TAB_KEY = "admin_dashboard_last_tab";
@@ -89,6 +90,17 @@ export default function AdminDashboard() {
   const [supportedRoles, setSupportedRoles] = useState([]);
   const [rolePermissions, setRolePermissions] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [invites, setInvites] = useState([]);
+  const [inviteAccessDenied, setInviteAccessDenied] = useState(false);
+  const [inviteForm, setInviteForm] = useState({
+    email: "",
+    first_name: "",
+    last_name: "",
+    phone: "",
+    address: "",
+  });
+  const [inviteStatusFilter, setInviteStatusFilter] = useState("all");
+  const [lastInviteUrl, setLastInviteUrl] = useState("");
 
   const [userSearch, setUserSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -155,6 +167,18 @@ export default function AdminDashboard() {
       setClients(Array.isArray(clientsData) ? clientsData : []);
       setPersonnel(Array.isArray(personnelData) ? personnelData : []);
 
+      const invitesRes = await apiFetch("/invites?limit=200");
+      if (invitesRes.ok) {
+        const invitesData = await invitesRes.json();
+        setInvites(Array.isArray(invitesData) ? invitesData : []);
+        setInviteAccessDenied(false);
+      } else if (invitesRes.status === 403) {
+        setInvites([]);
+        setInviteAccessDenied(true);
+      } else {
+        throw new Error(await getErrorDetail(invitesRes));
+      }
+
       if (user?.role === "admin") {
         const [usersRes, rolesRes, rolePermissionsRes, docsRes] = await Promise.all([
           apiFetch("/users?limit=500"),
@@ -218,7 +242,7 @@ export default function AdminDashboard() {
     }
   }, [activeAdminTab, canManageRoles]);
 
-  const assignmentsCount = useMemo(
+  const _assignmentsCount = useMemo(
     () =>
       cases.reduce(
         (total, entry) =>
@@ -262,6 +286,11 @@ export default function AdminDashboard() {
       return haystack.includes(query);
     });
   }, [documents, documentSearch, documentStatusFilter]);
+
+  const filteredInvites = useMemo(() => {
+    if (inviteStatusFilter === "all") return invites;
+    return invites.filter((entry) => entry.status === inviteStatusFilter);
+  }, [invites, inviteStatusFilter]);
 
   const filteredCases = useMemo(() => {
     const query = caseSearch.trim().toLowerCase();
@@ -396,6 +425,53 @@ export default function AdminDashboard() {
     });
   };
 
+  const handleInviteInputChange = (event) => {
+    const { name, value } = event.target;
+    setInviteForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleCreateInvite = async (event) => {
+    event.preventDefault();
+    if (!inviteForm.email.trim()) {
+      setNotice({ type: "error", text: "Invite email is required." });
+      return;
+    }
+
+    await withAction("create-invite", async () => {
+      const res = await apiFetch("/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: inviteForm.email.trim(),
+          first_name: inviteForm.first_name.trim() || null,
+          last_name: inviteForm.last_name.trim() || null,
+          phone: inviteForm.phone.trim() || null,
+          address: inviteForm.address.trim() || null,
+        }),
+      });
+      if (!res.ok) throw new Error(await getErrorDetail(res));
+      const data = await res.json();
+      setNotice({ type: "success", text: "Invite created." });
+      setLastInviteUrl(data?.invite_url || "");
+      setInviteForm({
+        email: "",
+        first_name: "",
+        last_name: "",
+        phone: "",
+        address: "",
+      });
+      if (data?.invite_url) {
+        try {
+          await navigator.clipboard.writeText(data.invite_url);
+          setNotice({ type: "success", text: "Invite created and link copied to clipboard." });
+        } catch {
+          setNotice({ type: "success", text: `Invite created: ${data.invite_url}` });
+        }
+      }
+      await loadAdminData();
+    });
+  };
+
   if (!user) {
     return (
       <MainLayout>
@@ -467,6 +543,143 @@ export default function AdminDashboard() {
             hint="Available staff for assignment"
           />
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Invite Manager</CardTitle>
+            <CardDescription>
+              Generate one-time invite links for client onboarding and track invite status.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {inviteAccessDenied ? (
+              <Alert>
+                <Shield className="h-4 w-4" />
+                <AlertTitle>Permission required</AlertTitle>
+                <AlertDescription>
+                  You need <code>invites:manage</code> permission to manage invites.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                <form onSubmit={handleCreateInvite} className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  <Input
+                    name="email"
+                    value={inviteForm.email}
+                    onChange={handleInviteInputChange}
+                    placeholder="client@email.com"
+                  />
+                  <Input
+                    name="first_name"
+                    value={inviteForm.first_name}
+                    onChange={handleInviteInputChange}
+                    placeholder="First name (optional)"
+                  />
+                  <Input
+                    name="last_name"
+                    value={inviteForm.last_name}
+                    onChange={handleInviteInputChange}
+                    placeholder="Last name (optional)"
+                  />
+                  <Input
+                    name="phone"
+                    value={inviteForm.phone}
+                    onChange={handleInviteInputChange}
+                    placeholder="Phone (optional)"
+                  />
+                  <Input
+                    name="address"
+                    value={inviteForm.address}
+                    onChange={handleInviteInputChange}
+                    placeholder="Address (optional)"
+                  />
+                  <div className="md:col-span-2 xl:col-span-5">
+                    <Button type="submit" disabled={actionKey === "create-invite"}>
+                      <Plus className="mr-1 h-4 w-4" />
+                      {actionKey === "create-invite" ? "Creating..." : "Create Invite"}
+                    </Button>
+                  </div>
+                </form>
+
+                <div className="flex items-center gap-2">
+                  <Select value={inviteStatusFilter} onValueChange={setInviteStatusFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All invites</SelectItem>
+                      <SelectItem value="pending">pending</SelectItem>
+                      <SelectItem value="used">used</SelectItem>
+                      <SelectItem value="expired">expired</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Badge variant="outline">{filteredInvites.length} invites</Badge>
+                </div>
+
+                {lastInviteUrl ? (
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                    <Input value={lastInviteUrl} readOnly />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(lastInviteUrl);
+                          setNotice({ type: "success", text: "Invite link copied to clipboard." });
+                        } catch {
+                          setNotice({ type: "error", text: "Could not copy invite link." });
+                        }
+                      }}
+                    >
+                      Copy Link
+                    </Button>
+                  </div>
+                ) : null}
+
+                {filteredInvites.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No invites found.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded-md border">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-muted/50 text-left">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Email</th>
+                          <th className="px-3 py-2 font-medium">Status</th>
+                          <th className="px-3 py-2 font-medium">Created</th>
+                          <th className="px-3 py-2 font-medium">Expires</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredInvites.map((entry) => (
+                          <tr key={entry.id} className="border-t hover:bg-muted/20">
+                            <td className="px-3 py-2">
+                              <div className="mb-1 flex items-center gap-2">
+                                <Badge variant="outline">#{entry.id}</Badge>
+                                <Badge variant="secondary">{entry.role}</Badge>
+                              </div>
+                              <div>{entry.invited_email}</div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <Badge variant={entry.status === "pending" ? "default" : "outline"}>
+                                {entry.status}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">
+                              {entry.created_at ? new Date(entry.created_at).toLocaleString() : "N/A"}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">
+                              {entry.expires_at ? new Date(entry.expires_at).toLocaleString() : "N/A"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         <Tabs value={activeAdminTab} onValueChange={setActiveAdminTab} className="gap-4">
           {canManageRoles ? (

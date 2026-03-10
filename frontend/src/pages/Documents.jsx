@@ -5,7 +5,7 @@ import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { motion } from "framer-motion";
+import { motion as Motion } from "framer-motion";
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { getStoredUser, fetchCurrentUser } from "@/lib/auth";
 
@@ -35,7 +35,7 @@ export default function Documents() {
 
   return (
     <MainLayout>
-      <motion.div
+      <Motion.div
         className="p-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -46,7 +46,7 @@ export default function Documents() {
         {documents.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {documents.map((doc) => (
-              <motion.div
+              <Motion.div
                 key={doc.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -85,7 +85,7 @@ export default function Documents() {
                     </div>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </Motion.div>
             ))}
           </div>
         ) : (
@@ -93,7 +93,7 @@ export default function Documents() {
             No documents available.
           </p>
         )}
-      </motion.div>
+      </Motion.div>
     </MainLayout>
   );
 }

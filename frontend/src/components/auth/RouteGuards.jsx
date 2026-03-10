@@ -4,18 +4,14 @@ import { fetchCurrentUser, getStoredUser } from "@/lib/auth";
 
 const useAuthUser = () => {
   const [user, setUser] = useState(() => getStoredUser());
-  const [isLoading, setIsLoading] = useState(!getStoredUser());
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      setIsLoading(false);
-      return;
-    }
     let active = true;
     fetchCurrentUser()
       .then((currentUser) => {
         if (!active) return;
-        setUser(currentUser);
+        setUser(currentUser || null);
       })
       .finally(() => {
         if (!active) return;
@@ -25,7 +21,7 @@ const useAuthUser = () => {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, []);
 
   return { user, isLoading };
 };

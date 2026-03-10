@@ -44,6 +44,11 @@ class Settings:
             for role in (_get_env("AZURE_ROLE_PRIORITY", "admin,lawyer,accountant,paralegal,legal assistant,client") or "").split(",")
             if role.strip()
         ]
+        self.azure_allowed_group_ids = {
+            group_id.strip()
+            for group_id in (_get_env("AZURE_ALLOWED_GROUP_IDS", "") or "").split(",")
+            if group_id.strip()
+        }
         group_role_map_raw = _get_env("AZURE_GROUP_ROLE_MAP", "{}") or "{}"
         try:
             parsed_group_role_map = json.loads(group_role_map_raw)
@@ -56,6 +61,9 @@ class Settings:
         except Exception as exc:
             raise RuntimeError(f"Invalid AZURE_GROUP_ROLE_MAP: {exc}") from exc
 
+        self.invite_expiry_days = int(_get_env("INVITE_EXPIRY_DAYS", "7"))
+        self.invite_manage_permission = _get_env("INVITE_MANAGE_PERMISSION", "invites:manage")
+
         # Auth cookie
         self.auth_cookie_name = _get_env("AUTH_COOKIE_NAME", "access_token")
 
@@ -63,6 +71,8 @@ class Settings:
         self.twilio_account_sid = _get_env("TWILIO_ACCOUNT_SID")
         self.twilio_auth_token = _get_env("TWILIO_AUTH_TOKEN")
         self.twilio_phone_number = _get_env("TWILIO_PHONE_NUMBER")
+        twilio_validate_signature = (_get_env("TWILIO_VALIDATE_SIGNATURE", "true") or "true").strip().lower()
+        self.twilio_validate_signature = twilio_validate_signature in {"1", "true", "yes", "on"}
 
         # URLs / CORS
         self.client_base_url = _get_env("CLIENT_BASE_URL", "http://localhost:5173")

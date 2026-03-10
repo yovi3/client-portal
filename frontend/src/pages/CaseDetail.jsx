@@ -9,9 +9,10 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { motion } from "framer-motion"
+import { motion as Motion } from "framer-motion"
 import { API_BASE_URL, CLIENT_BASE_URL, getWsBaseUrl, apiFetch } from "@/lib/api"
 import { getStoredUser, fetchCurrentUser } from "@/lib/auth"
+import { STAFF_ROLES, getDocumentRequestBody, getDocumentRequestTitle } from "@/lib/documentRequestText"
 
 
 export default function CaseDetail() {
@@ -44,6 +45,25 @@ export default function CaseDetail() {
   const messagesEndRef = useRef(null);
   const ws = useRef(null);
 
+  const fetchCaseDocuments = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await apiFetch(`/cases/${id}/requests`);
+      if (!res.ok) return;
+      const requests = await res.json();
+      const docs =
+        requests?.flatMap(
+          (req) =>
+            req?.requested_documents?.filter(
+              (doc) => doc.status === "uploaded" || doc.status === "reviewed",
+            ) || [],
+        ) || [];
+      setDocuments(docs);
+    } catch (e) {
+      console.error("Failed to load documents", e);
+    }
+  }, [id]);
+
   // --- 1. Load User ---
   useEffect(() => {
     const stored = getStoredUser();
@@ -65,8 +85,6 @@ export default function CaseDetail() {
       setCaseData(data || {});
       setPersonnel(data?.personnel || []);
       setClients(data?.clients || []);
-
-      setDocuments([]);
     } catch (error) {
       console.error(error);
       setCaseData(null);
@@ -81,24 +99,8 @@ export default function CaseDetail() {
 
   // --- 2b. Fetch documents for case ---
   useEffect(() => {
-    if (!id) return;
-    const fetchDocuments = async () => {
-      try {
-        const res = await apiFetch(`/cases/${id}/requests`);
-        if (!res.ok) return;
-        const requests = await res.json();
-        const docs =
-          requests
-            ?.flatMap(req =>
-              req?.requested_documents?.filter(doc => doc.status === "uploaded" || doc.status === "reviewed") || []
-            ) || [];
-        setDocuments(docs);
-      } catch (e) {
-        console.error("Failed to load documents", e);
-      }
-    };
-    fetchDocuments();
-  }, [id]);
+    fetchCaseDocuments();
+  }, [fetchCaseDocuments]);
   
   
   // --- 3. Chat Logic (Fetch & WebSocket) ---
@@ -241,6 +243,7 @@ export default function CaseDetail() {
       
       if (res.ok) {
         await fetchCaseDetails(); 
+        await fetchCaseDocuments();
         setAddPersonnelOpen(false);
         setPersonnelSearch("");
       }
@@ -256,6 +259,7 @@ export default function CaseDetail() {
       });
       if (res.ok) {
         setPersonnel(prev => prev.filter(p => p.id !== personnelId));
+        await fetchCaseDocuments();
       }
     } catch (e) {
       console.error(e);
@@ -271,6 +275,7 @@ export default function CaseDetail() {
 
       if (res.ok) {
         await fetchCaseDetails(); 
+        await fetchCaseDocuments();
         setAddClientOpen(false);
         setClientSearch("");
         setClientRoleToAssign("client");
@@ -287,6 +292,7 @@ export default function CaseDetail() {
       });
       if (res.ok) {
         setClients(prev => prev.filter(c => c.id !== clientId));
+        await fetchCaseDocuments();
       }
     } catch (e) {
       console.error(e);
@@ -296,17 +302,6 @@ export default function CaseDetail() {
   const handleDocumentDownload = (doc) => {
     if (!doc?.file_path) return;
     window.open(`${API_BASE_URL}/documents/${doc.id}/download`, "_blank");
-  };
-
-  // --- UI Helpers ---
-  const getStatusColor = (status) => {
-    if (!status) return "outline";
-    return status === "active" ? "default" : status === "pending" ? "secondary" : "outline";
-  };
-
-  const getPriorityColor = (priority) => {
-    if (!priority) return "outline";
-    return priority === "high" ? "destructive" : priority === "medium" ? "secondary" : "outline";
   };
 
   if (isLoading) {
@@ -335,7 +330,7 @@ export default function CaseDetail() {
 
   return (
     <MainLayout>
-      <motion.div className="p-6 max-w-7xl mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+      <Motion.div className="p-6 max-w-7xl mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
 
         <div className="grid gap-6 lg:grid-cols-3">
 
@@ -348,7 +343,7 @@ export default function CaseDetail() {
                 <ArrowLeft className="mr-2 h-4 w-4" /> Back to Cases
               </Button>
               <Button variant="outline" size="sm" onClick={() => navigate(`/messages?case_id=${id}`)}>
-                <MessageSquare className="mr-2 h-4 w-4" /> View All Messages
+                <MessageSquare className="mr-2 h-4 w-4" /> Go to Messages
               </Button>
             </div>
 
@@ -594,6 +589,19 @@ export default function CaseDetail() {
                   const senderName = getSenderName(msg.sender_id);
                   const isDocumentRequest = msg.message_type === "document_request";
                   const docRequest = msg.document_request;
+                  const documentRequestLabel = getDocumentRequestTitle(currentUser?.role);
+                  const documentRequestBody = getDocumentRequestBody(currentUser?.role, docRequest, {
+                    clientCount: caseData?.clients?.length || clients.length || 1,
+                  });
+                  const requestedDocuments = docRequest?.requested_documents || [];
+                  const uploadedCount = requestedDocuments.filter(
+                    (doc) => doc.status === "uploaded" || doc.status === "reviewed",
+                  ).length;
+                  const totalRequested = requestedDocuments.length;
+                  const hasUploads = uploadedCount > 0;
+                  const isCompleted =
+                    docRequest?.status === "completed" ||
+                    (totalRequested > 0 && uploadedCount === totalRequested);
 
                   return (
                     <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
@@ -616,23 +624,48 @@ export default function CaseDetail() {
                                     : "bg-muted text-foreground rounded-tl-none"
                                 }`}>
                                     {isDocumentRequest && (
-                                      <p className="text-xs font-semibold mb-1 opacity-80">Document Request</p>
+                                      <p className="text-xs font-semibold mb-1 opacity-80">{documentRequestLabel}</p>
                                     )}
-                                    <p>{msg.content}</p>
+                                    <p>{isDocumentRequest ? documentRequestBody : msg.content}</p>
                                     {isDocumentRequest && docRequest && (
                                       <div className="mt-2 space-y-1">
-                                        {(docRequest.requested_documents || []).map((doc) => (
+                                        {requestedDocuments.map((doc) => (
                                           <p key={doc.id} className="text-xs opacity-90">- {doc.name}</p>
                                         ))}
-                                        {currentUser?.role === "client" && docRequest.access_token && (
-                                          <Button
-                                            size="sm"
-                                            variant={isMe ? "secondary" : "outline"}
-                                            className="h-7 mt-2"
-                                            onClick={() => window.open(`${CLIENT_BASE_URL}/requests/${docRequest.access_token}`, "_blank")}
-                                          >
-                                            Upload documents
-                                          </Button>
+                                        {STAFF_ROLES.has(currentUser?.role) ? (
+                                          hasUploads ? (
+                                            <Button
+                                              size="sm"
+                                              variant={isMe ? "secondary" : "outline"}
+                                              className="h-7 mt-2"
+                                              onClick={() => navigate(`/messages?case_id=${id}`)}
+                                            >
+                                              Review uploads
+                                            </Button>
+                                          ) : (
+                                            <p className="text-xs mt-2 opacity-90">Pending client uploads.</p>
+                                          )
+                                        ) : (
+                                          <>
+                                            {isCompleted ? (
+                                              <p className="text-xs mt-2 font-medium text-green-700">
+                                                Successfully uploaded document{totalRequested === 1 ? "" : "s"}.
+                                              </p>
+                                            ) : (
+                                              docRequest.access_token && (
+                                                <Button
+                                                  size="sm"
+                                                  variant={isMe ? "secondary" : "outline"}
+                                                  className="h-7 mt-2"
+                                                  onClick={() =>
+                                                    window.open(`${CLIENT_BASE_URL}/requests/${docRequest.access_token}`, "_blank")
+                                                  }
+                                                >
+                                                  Upload documents
+                                                </Button>
+                                              )
+                                            )}
+                                          </>
                                         )}
                                       </div>
                                     )}
@@ -662,7 +695,7 @@ export default function CaseDetail() {
           </div>
 
         </div>
-      </motion.div>
+      </Motion.div>
     </MainLayout>
   );
 }

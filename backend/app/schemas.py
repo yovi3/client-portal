@@ -317,3 +317,60 @@ class RolePermission(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+InviteRole = Literal["client"]
+InviteStatus = Literal["pending", "used", "expired"]
+
+
+class InviteCreate(BaseModel):
+    email: EmailStr
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+
+class Invite(BaseModel):
+    id: int
+    invited_email: EmailStr
+    role: InviteRole
+    invited_by_user_id: int
+    expires_at: datetime
+    used_at: Optional[datetime] = None
+    accepted_user_id: Optional[int] = None
+    created_at: datetime
+    status: InviteStatus
+
+    prefill_first_name: Optional[str] = None
+    prefill_last_name: Optional[str] = None
+    prefill_phone: Optional[str] = None
+    prefill_address: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class InviteCreateResponse(BaseModel):
+    invite: Invite
+    invite_url: str
+
+
+class InvitePreview(BaseModel):
+    invited_email: EmailStr
+    role: InviteRole
+    expires_at: datetime
+    required_fields: List[str]
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+
+class InviteAccept(BaseModel):
+    token: str
+    first_name: str
+    last_name: str
+    phone: str
+    address: str
+    password: str

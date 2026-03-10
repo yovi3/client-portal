@@ -4,11 +4,6 @@ import { useNavigate } from "react-router-dom"; // <-- ADDED
 import { toast } from "sonner"; // <-- ADDED
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 
-const QUICK_LOGINS = {
-  admin: { email: "kuc@dsslaw.com", password: "password123" },
-  client: { email: "client@example.com", password: "password123" },
-};
-
 export default function LoginPage() {
   const [formData, setFormData] = useState({
     email: "",
@@ -75,18 +70,6 @@ export default function LoginPage() {
     await loginWithCredentials(formData.email, formData.password);
   };
 
-  const handleQuickLogin = async (target) => {
-    const creds = QUICK_LOGINS[target];
-    if (!creds) return;
-    setFormData((prev) => ({
-      ...prev,
-      email: creds.email,
-      password: creds.password,
-    }));
-    setErrors({});
-    await loginWithCredentials(creds.email, creds.password);
-  };
-
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
@@ -121,27 +104,10 @@ export default function LoginPage() {
           Sign in with Microsoft
         </button>
 
-        <div className="flex items-center mb-4">
+        <div className="flex items-center mb-3">
           <hr className="flex-1 border-black/20" />
           <span className="mx-2 text-black/50 text-sm">or continue with email</span>
           <hr className="flex-1 border-black/20" />
-        </div>
-
-        <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => handleQuickLogin("admin")}
-            className="w-full rounded-md border border-black bg-white py-2 text-sm font-medium text-black hover:bg-gray-100"
-          >
-            Login as Admin
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickLogin("client")}
-            className="w-full rounded-md border border-black bg-white py-2 text-sm font-medium text-black hover:bg-gray-100"
-          >
-            Login as Client
-          </button>
         </div>
 
         {/* Manual login form */}
@@ -204,13 +170,6 @@ export default function LoginPage() {
             Sign In
           </button>
         </form>
-
-        <p className="text-sm text-black/70 mt-4 text-center">
-          Don't have an account?{" "}
-          <a href="/register" className="underline">
-            Create an account
-          </a>
-        </p>
       </div>
     </div>
   );

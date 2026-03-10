@@ -99,6 +99,28 @@ class RolePermission(Base):
     permission = Column(String, nullable=False, index=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
+
+class Invite(Base):
+    __tablename__ = "invites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    invited_email = Column(String, nullable=False, index=True)
+    role = Column(String, nullable=False, default="client", server_default="client")
+    token_hash = Column(String, nullable=False, unique=True, index=True)
+    invited_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used_at = Column(DateTime, nullable=True, index=True)
+    accepted_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)
+
+    prefill_first_name = Column(String, nullable=True)
+    prefill_last_name = Column(String, nullable=True)
+    prefill_phone = Column(String, nullable=True)
+    prefill_address = Column(String, nullable=True)
+
+    invited_by_user = relationship("User", foreign_keys=[invited_by_user_id])
+    accepted_user = relationship("User", foreign_keys=[accepted_user_id])
+
 # =========================================================================
 # 2. PROFILE TABLES
 # =========================================================================
