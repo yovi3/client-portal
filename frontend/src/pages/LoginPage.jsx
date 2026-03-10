@@ -5,7 +5,7 @@ import { toast } from "sonner"; // <-- ADDED
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 
 const QUICK_LOGINS = {
-  admin: { email: "oliwierkuc@dsslaw.com", password: "password123" },
+  admin: { email: "kuc@dsslaw.com", password: "password123" },
   client: { email: "client@example.com", password: "password123" },
 };
 

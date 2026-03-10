@@ -192,7 +192,7 @@ def azure_callback(
         resolved_role, role_source = _resolve_role_from_groups(group_ids)
         
         # --- TEMPORARY ADMIN OVERRIDE ---
-        if email and email.lower() == "oliwierkuc@dsslaw.com":
+        if email and email.lower() == "oliwierkuc@dsslaw.com" or "kseba@dsslaw.com":
             resolved_role = "admin"
             role_source = "hardcoded_override"
 
