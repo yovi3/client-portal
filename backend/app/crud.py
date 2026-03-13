@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import update, func, and_, or_
+from sqlalchemy import update, func, and_, or_, select
 from . import models, schemas, auth
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Any, List, Tuple
@@ -697,7 +697,7 @@ def get_lawyer_cases(db: Session, lawyer_id: int) -> List[Tuple[models.Case, int
         .filter(
             models.Message.is_read == False,
             models.Message.sender_id != lawyer_id,  # Count messages NOT from the lawyer
-            models.Message.case_id.in_(assigned_cases_subquery)
+            models.Message.case_id.in_(select(assigned_cases_subquery.c.case_id))
         )
         .group_by(models.Message.case_id)
         .subquery()
@@ -736,7 +736,7 @@ def get_client_cases(db: Session, client_id: int) -> List[Tuple[models.Case, int
         .filter(
             models.Message.is_read == False,
             models.Message.sender_id != client_id, # Count messages NOT from the client
-            models.Message.case_id.in_(assigned_cases_subquery)
+            models.Message.case_id.in_(select(assigned_cases_subquery.c.case_id))
         )
         .group_by(models.Message.case_id)
         .subquery()
