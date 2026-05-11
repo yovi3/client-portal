@@ -47,7 +47,7 @@ def create_doc_request(
         client_phone = primary_client.client_profile.phone
         link = f"{settings.client_base_url}/requests/{db_request.access_token}"
         message_body = (
-            f"New documents are required for your case (#{db_case.case_number} - {db_case.title}). "
+            f"New documents are required for your case ({db_case.lawbase_case_number or 'N/A'} - {db_case.title}). "
             f"Click to upload them: {link}"
         )
         send_sms(to_number=client_phone, body=message_body)
@@ -210,26 +210,28 @@ def get_all_documents(
     return response
 
 
-@router.get("/admin/documents", response_model=List[schemas.DocumentResponse])
+@router.get("/admin/documents", response_model=schemas.PaginatedDocumentsResponse)
 def get_all_documents_admin(
+    page: int = 1,
+    page_size: int = 50,
     status: str | None = None,
     search: str | None = None,
-    skip: int = 0,
-    limit: int = 1000,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     require_admin_user(current_user)
+    total = crud.count_documents_admin(db, status=status, search_term=search)
+    skip = (page - 1) * page_size
     results = crud.get_all_documents_admin(
         db,
         status=status,
         search_term=search,
         skip=skip,
-        limit=limit,
+        limit=page_size,
     )
-    response = []
+    items = []
     for doc, case_title, case_id, request_date in results:
-        response.append(
+        items.append(
             schemas.DocumentResponse(
                 id=doc.id,
                 name=doc.name,
@@ -240,7 +242,14 @@ def get_all_documents_admin(
                 upload_date=request_date,
             )
         )
-    return response
+    total_pages = max(1, -(-total // page_size))  # ceil division
+    return schemas.PaginatedDocumentsResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.patch("/admin/documents/{doc_id}/status", response_model=schemas.DocumentResponse)

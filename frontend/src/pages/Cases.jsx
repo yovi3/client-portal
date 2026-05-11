@@ -1,226 +1,98 @@
-"use client"
-
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import MainLayout from "../components/layout/MainLayout"
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
+import { Card, CardContent } from "../components/ui/card"
 import { Badge } from "../components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
-import { motion as Motion } from "framer-motion"
-import { Plus } from "lucide-react"
-import { Button } from "../components/ui/button"
+import { Briefcase, ChevronRight } from "lucide-react"
 import { apiFetch } from "@/lib/api"
 import { getStoredUser, fetchCurrentUser } from "@/lib/auth"
 
 export default function Cases() {
   const navigate = useNavigate()
   const [cases, setCases] = useState([])
-  const [activeTab, setActiveTab] = useState("all")
-  const urgencyFilter = "all"
-  const categoryFilter = "all"
-  const [user, setUser] = useState(null) // Added user state for context
+  const [user, setUser] = useState(() => getStoredUser())
+  const [isLoading, setIsLoading] = useState(true)
 
-  // --- 1. Load User from Local Storage ---
   useEffect(() => {
-    const loggedInUser = getStoredUser();
-    if (loggedInUser) {
-      setUser(loggedInUser);
-      return;
-    }
+    if (user) return
     fetchCurrentUser().then((u) => {
-      if (u) setUser(u);
-      else navigate("/login");
-    });
-  }, [navigate]);
-
-  // --- 2. Fetch Cases (Modified to use API) ---
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchCases = async () => {
-      try {
-        const res = await apiFetch("/cases");
-        if (!res.ok) throw new Error("Failed to fetch cases from API.");
-        
-        const data = await res.json();
-        setCases(data || []);
-      } catch (error) {
-        console.error("Error fetching cases:", error);
-        setCases([]);
-      }
-    };
-
-    fetchCases();
-  }, [user, navigate]);
-
-  // --- 3. Filtering Logic ---
-  const applyFilters = (caseList) => {
-    return caseList.filter((c) => {
-      // NOTE: c.priority is used here to match the current DB model
-      if (urgencyFilter !== "all" && c.priority !== urgencyFilter) return false
-      if (categoryFilter !== "all" && c.category !== categoryFilter) return false
-      return true
+      if (u) setUser(u)
+      else navigate("/login")
     })
-  }
-  
-  // The 'My Cases' tab logic must be adjusted for M2M structure:
-  const myCasesRaw = cases.filter((c) => {
-    if (!user) return false;
-    // Check if the user is in the personnel list (for lawyers/staff)
-    const isPersonnel = c.personnel?.some(p => p.id === user.id);
-    // Check if the user is in the clients list (for clients)
-    const isClient = c.clients?.some(cl => cl.id === user.id);
-    
-    return isPersonnel || isClient;
-  });
+  }, [user, navigate])
 
-
-  const myCasesFiltered = applyFilters(myCasesRaw)
-  const allCasesFiltered = applyFilters(cases)
-
-  const handleCaseClick = (caseId) => {
-    navigate(`/cases/${caseId}`)
-  }
+  useEffect(() => {
+    if (!user) return
+    const load = async () => {
+      setIsLoading(true)
+      try {
+        const res = await apiFetch("/cases")
+        if (res.ok) setCases(await res.json())
+      } catch {}
+      finally { setIsLoading(false) }
+    }
+    load()
+  }, [user])
 
   return (
     <MainLayout>
-      <Motion.div className="p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-          <h1 className="text-3xl font-bold">Cases</h1>
+      <div className="p-6 space-y-5">
 
-          {/* <div className="flex gap-2">
-            <Select onValueChange={setUrgencyFilter} value={urgencyFilter}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Urgency" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Urgencies</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select onValueChange={setCategoryFilter} value={categoryFilter}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="Property">Property</SelectItem>
-                <SelectItem value="Criminal">Criminal</SelectItem>
-                <SelectItem value="Corporate">Corporate</SelectItem>
-              </SelectContent>
-            </Select>
-          </div> */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Cases</h1>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="flex items-center justify-between mb-4">
-            <TabsList>
-              <TabsTrigger value="all">All Cases</TabsTrigger>
-              <TabsTrigger value="my">My Cases</TabsTrigger>
-            </TabsList>
-
-            {user && user.role !== "client" && (
-              <Button onClick={() => (window.location.href = "/createcase")} size="default" className="gap-2 shadow-sm">
-                <Plus className="h-4 w-4" />
-                New Case
-              </Button>
-            )}
-          </div>
-
-
-          <TabsContent value="my">
-            {myCasesFiltered.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {myCasesFiltered.map((c) => (
-                  <Motion.div
-                    key={c.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <Card
-                      className="hover:shadow-md transition-shadow cursor-pointer"
-                      onClick={() => handleCaseClick(c.id)}
-                    >
-                      <CardHeader>
-                        <CardTitle className="flex justify-between items-center">
-                          <span>{c.title}</span>
-                          {/* Use unread_count from the API structure */}
-                          {c.unread_count > 0 && <Badge variant="destructive">New ({c.unread_count})</Badge>}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-muted-foreground mb-1">Case Number: {c.case_number ?? "N/A"}</p>
-                        <p className="text-sm text-muted-foreground mb-1">Category: {c.category || "—"}</p>
-                        <p className="text-sm text-muted-foreground mb-1">
-                          Urgency: {c.priority ? c.priority.toUpperCase() : "—"}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Clients: {(c.clients && c.clients.map((cl) => cl.name).join(", ")) || "N/A"}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {/* Display first assigned personnel role and name */}
-                          Assigned:{" "}
-                          {c.personnel && c.personnel[0] ? `${c.personnel[0].role} (${c.personnel[0].name})` : "N/A"}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </Motion.div>
+        <Card className="border-border shadow-none">
+          <CardContent className="p-0">
+            {isLoading && (
+              <div className="divide-y divide-border">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="p-4 space-y-2">
+                    <div className="h-4 w-1/2 bg-muted rounded animate-pulse" />
+                    <div className="h-3 w-1/3 bg-muted rounded animate-pulse" />
+                  </div>
                 ))}
               </div>
-            ) : (
-              <p className="text-muted-foreground text-sm mt-4">No cases match your filters.</p>
             )}
-          </TabsContent>
 
-          <TabsContent value="all">
-            {allCasesFiltered.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {allCasesFiltered.map((c) => (
-                  <Motion.div
-                    key={c.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <Card
-                      className="hover:shadow-md transition-shadow cursor-pointer"
-                      onClick={() => handleCaseClick(c.id)}
-                    >
-                      <CardHeader>
-                        <CardTitle className="flex justify-between items-center">
-                          <span>{c.title}</span>
-                          {/* Use unread_count from the API structure */}
-                          {c.unread_count > 0 && <Badge variant="destructive">New ({c.unread_count})</Badge>}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-muted-foreground mb-1">Case Number: {c.case_number ?? "N/A"}</p>
-                        {/* <p className="text-sm text-muted-foreground mb-1">Category: {c.category || "—"}</p>
-                        <p className="text-sm text-muted-foreground mb-1">
-                          Urgency: {c.priority ? c.priority.toUpperCase() : "—"}
-                        </p> */}
-                        <p className="text-sm text-muted-foreground">
-                          Clients: {(c.clients && c.clients.map((cl) => cl.name).join(", ")) || "N/A"}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Assigned:{" "}
-                          {c.personnel && c.personnel[0] ? `${c.personnel[0].role} (${c.personnel[0].name})` : "N/A"}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </Motion.div>
-                ))}
+            {!isLoading && cases.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Briefcase className="h-8 w-8 text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">No cases assigned</p>
               </div>
-            ) : (
-              <p className="text-muted-foreground text-sm mt-4">No cases match your filters.</p>
             )}
-          </TabsContent>
-        </Tabs>
-      </Motion.div>
+
+            <div className="divide-y divide-border">
+              {cases.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => navigate(`/cases/${c.id}`)}
+                  className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors flex items-center gap-3 cursor-pointer"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="font-medium text-sm text-foreground truncate">{c.title}</p>
+                      {(c.unread_count || 0) > 0 && (
+                        <Badge variant="destructive" className="h-4 px-1 text-[10px] shrink-0">
+                          {c.unread_count} new
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      Team: {c.personnel?.map((p) => p.name).join(", ") || "—"}
+                      {" · "}
+                      Client: {c.clients?.map((cl) => cl.name).join(", ") || "—"}
+                    </p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground/60 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+      </div>
     </MainLayout>
   )
 }

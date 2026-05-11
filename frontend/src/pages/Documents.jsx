@@ -1,99 +1,120 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { motion as Motion } from "framer-motion";
+import { Input } from "@/components/ui/input";
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { getStoredUser, fetchCurrentUser } from "@/lib/auth";
+import { FileText, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const STATUS_CLASS = {
+  uploaded: "bg-blue-50 text-blue-700 border border-blue-200",
+  reviewed: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  required: "bg-amber-50 text-amber-700 border border-amber-200",
+  pending: "bg-amber-50 text-amber-700 border border-amber-200",
+};
 
 export default function Documents() {
   const [user, setUser] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load user on mount
   useEffect(() => {
     const stored = getStoredUser();
-    if (stored) {
-      setUser(stored);
-      return;
-    }
+    if (stored) { setUser(stored); return; }
     fetchCurrentUser().then((u) => setUser(u));
   }, []);
 
-  // Fetch documents when user loads
   useEffect(() => {
     if (!user) return;
-
+    setIsLoading(true);
     apiFetch(`/documents?user_id=${user.id}&role=${user.role}`)
       .then((res) => res.json())
-      .then((data) => setDocuments(data))
-      .catch(console.error);
+      .then((data) => setDocuments(Array.isArray(data) ? data : []))
+      .catch(console.error)
+      .finally(() => setIsLoading(false));
   }, [user]);
+
+  const filteredDocuments = useMemo(() => {
+    if (!searchQuery.trim()) return documents;
+    const q = searchQuery.toLowerCase();
+    return documents.filter(
+      (doc) =>
+        doc.name?.toLowerCase().includes(q) ||
+        doc.case_title?.toLowerCase().includes(q)
+    );
+  }, [documents, searchQuery]);
 
   return (
     <MainLayout>
-      <Motion.div
-        className="p-6"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-      >
-        <h1 className="text-3xl font-bold mb-6">Case Documents</h1>
+      <div className="p-6 space-y-5">
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Documents</h1>
+          <div className="relative max-w-xs w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search documents..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
 
-        {documents.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {documents.map((doc) => (
-              <Motion.div
-                key={doc.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2 }}
-              >
-                <Card className="hover:shadow-md transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex justify-between items-center">
-                      {doc.name}
-                      {doc.status && <Badge variant="secondary">{doc.status}</Badge>}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground mb-1">
-                      Case: {doc.case_title || "N/A"}
-                    </p>
-
-                    <p className="text-sm text-muted-foreground mb-1">
-                      Date: {doc.upload_date || "—"}
-                    </p>
-
-                    <p className="text-sm text-muted-foreground">
-                      File: {doc.file_path ? "Available" : "—"}
-                    </p>
-                    <div className="mt-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!doc.file_path}
-                        onClick={() =>
-                          window.open(`${API_BASE_URL}/documents/${doc.id}/download`, "_blank")
-                        }
-                      >
-                        View / Download
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Motion.div>
+        {isLoading && (
+          <div className="space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />
             ))}
           </div>
-        ) : (
-          <p className="text-muted-foreground text-sm mt-4">
-            No documents available.
-          </p>
         )}
-      </Motion.div>
+
+        {!isLoading && filteredDocuments.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <FileText className="h-8 w-8 text-muted-foreground/40 mb-3" />
+            <p className="text-sm text-muted-foreground">{searchQuery ? "No results found" : "No documents available"}</p>
+          </div>
+        )}
+
+        {!isLoading && filteredDocuments.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filteredDocuments.map((doc) => (
+              <Card key={doc.id} className="border-border shadow-none hover:shadow-sm transition-shadow">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold text-foreground flex items-start justify-between gap-2">
+                    <span className="truncate">{doc.name}</span>
+                    {doc.status && (
+                      <span className={cn(
+                        "inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium flex-shrink-0",
+                        STATUS_CLASS[doc.status] || "bg-muted text-muted-foreground border border-border"
+                      )}>
+                        {doc.status}
+                      </span>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <p className="text-sm text-muted-foreground mb-0.5">Case: {doc.case_title || "N/A"}</p>
+                  <p className="text-sm text-muted-foreground mb-3">Date: {doc.upload_date || "—"}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!doc.file_path}
+                    className="cursor-pointer"
+                    onClick={() => window.open(`${API_BASE_URL}/documents/${doc.id}/download`, "_blank")}
+                  >
+                    Download
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </MainLayout>
   );
 }

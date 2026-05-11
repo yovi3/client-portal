@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import update, func, and_, or_, select
+from sqlalchemy import update, func, and_, or_, select, case
 from . import models, schemas, auth
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Any, List, Tuple
@@ -11,7 +11,7 @@ import hashlib
 from fastapi import HTTPException # Import HTTPException for use in CRUD functions
 
 
-PERSONNEL_ROLES = ('lawyer', 'accountant', 'paralegal', 'legal assistant')
+PERSONNEL_ROLES = ('lawyer', 'accounting', 'other', 'case manager')
 STAFF_ROLES = PERSONNEL_ROLES + ('admin',)
 VALID_USER_ROLES = ('client',) + STAFF_ROLES
 CASE_CLIENT_ROLE_TYPES = {"client", "spouse", "legal guardian", "other"}
@@ -48,17 +48,27 @@ def generate_case_serial(db: Session, length: int = 8) -> str:
 
 
 def generate_case_number(db: Session) -> int:
-    """
-    Generates the next unique numeric case number.
-    Uses max+1 strategy with retry guard for unique conflicts.
-    """
-    for _ in range(10):
-        max_case_number = db.query(func.max(models.Case.case_number)).scalar()
-        next_number = (max_case_number or 0) + 1
-        exists = db.query(models.Case.id).filter(models.Case.case_number == next_number).first()
-        if not exists:
-            return int(next_number)
-    raise HTTPException(status_code=500, detail="Could not generate unique case number.")
+    last_case_number = db.query(func.max(models.Case.case_number)).scalar()
+    if last_case_number is None:
+        return 1
+    return int(last_case_number) + 1
+
+
+def _split_name(name: Optional[str]) -> tuple[str, str]:
+    normalized = (name or "").strip()
+    if not normalized:
+        return "", ""
+    parts = normalized.split()
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
+
+
+def _compose_name(first_name: Optional[str], last_name: Optional[str], fallback: Optional[str] = None) -> str:
+    full_name = f"{(first_name or '').strip()} {(last_name or '').strip()}".strip()
+    if full_name:
+        return full_name
+    return (fallback or "").strip()
 
 
 def _utc_now() -> datetime:
@@ -177,9 +187,22 @@ def create_user(db: Session, user_data: schemas.UserCreate) -> models.User:
     hashed_pw = auth.hash_password(raw_password)
     profile_data = user_data.profile_data or {}
     
+    first_name = (user_data.first_name or "").strip()
+    last_name = (user_data.last_name or "").strip()
+    fallback_name = (user_data.name or "").strip()
+    if not first_name and fallback_name:
+        first_name, derived_last = _split_name(fallback_name)
+        if not last_name:
+            last_name = derived_last
+    full_name = _compose_name(first_name, last_name, fallback_name)
+    if not full_name:
+        raise HTTPException(status_code=400, detail="First name and last name are required.")
+
     db_user = models.User(
         email=user_data.email,
-        name=user_data.name,
+        name=full_name,
+        first_name=first_name or None,
+        last_name=last_name or None,
         hashed_password=hashed_pw,
         role=user_data.role,
         aad_object_id=profile_data.get("aad_object_id"),
@@ -207,7 +230,13 @@ def create_user(db: Session, user_data: schemas.UserCreate) -> models.User:
         db_profile = models.ClientProfile(
             user_id=db_user.id,
             phone=normalized_phone,
-            address=profile_data.get("address")
+            address=profile_data.get("address"),
+            street_1=(profile_data.get("street_1") or "").strip() or None,
+            street_2=(profile_data.get("street_2") or "").strip() or None,
+            city=(profile_data.get("city") or "").strip() or None,
+            state=(profile_data.get("state") or "").strip() or None,
+            zip_code=(profile_data.get("zip_code") or "").strip() or None,
+            country=(profile_data.get("country") or "").strip() or None,
         )
     else:
         db_profile = None
@@ -262,7 +291,10 @@ def upsert_azure_user(
 
     if user:
         user.email = email or user.email
-        user.name = name or user.name
+        incoming_first, incoming_last = _split_name(name)
+        user.first_name = incoming_first or user.first_name
+        user.last_name = incoming_last or user.last_name
+        user.name = _compose_name(user.first_name, user.last_name, user.name)
         if resolved_role:
             user.role = resolved_role
             user.effective_role_source = role_source or "azure_group_map"
@@ -292,6 +324,8 @@ def upsert_azure_user(
     user_data = schemas.UserCreate(
         email=email,
         name=name or email,
+        first_name=_split_name(name or email)[0] or None,
+        last_name=_split_name(name or email)[1] or None,
         password=secrets.token_urlsafe(24),
         role=final_role,
         profile_data=profile_data,
@@ -313,14 +347,21 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
 
 
 def get_lawyers_and_personnel(db: Session, search_term: Optional[str] = None, skip: int = 0, limit: int = 100):
-    """Retrieves all users with 'lawyer', 'accountant', 'paralegal', or 'legal assistant' roles."""
+    """Retrieves all personnel users."""
     query = db.query(models.User)\
              .options(joinedload(models.User.lawyer_profile))\
-             .filter(models.User.role.in_(['lawyer', 'accountant', 'paralegal', 'legal assistant']))
+             .filter(models.User.role.in_(PERSONNEL_ROLES))
              
     if search_term:
         search_like = f"%{search_term}%"
-        query = query.filter(models.User.name.ilike(search_like))
+        query = query.filter(
+            or_(
+                models.User.name.ilike(search_like),
+                models.User.first_name.ilike(search_like),
+                models.User.last_name.ilike(search_like),
+                models.User.email.ilike(search_like),
+            )
+        )
         
     return query.offset(skip).limit(limit).all()
 
@@ -332,7 +373,14 @@ def get_all_clients(db: Session, search_term: Optional[str] = None, skip: int = 
              
     if search_term:
         search_like = f"%{search_term}%"
-        query = query.filter(models.User.name.ilike(search_like) | models.User.email.ilike(search_like))
+        query = query.filter(
+            or_(
+                models.User.name.ilike(search_like),
+                models.User.first_name.ilike(search_like),
+                models.User.last_name.ilike(search_like),
+                models.User.email.ilike(search_like),
+            )
+        )
         
     return query.offset(skip).limit(limit).all()
 
@@ -357,6 +405,8 @@ def get_users(
         query = query.filter(
             or_(
                 models.User.name.ilike(search_like),
+                models.User.first_name.ilike(search_like),
+                models.User.last_name.ilike(search_like),
                 models.User.email.ilike(search_like),
             )
         )
@@ -457,23 +507,37 @@ def serialize_invite(invite: models.Invite) -> dict[str, Any]:
         "prefill_first_name": invite.prefill_first_name,
         "prefill_last_name": invite.prefill_last_name,
         "prefill_phone": invite.prefill_phone,
-        "prefill_address": invite.prefill_address,
+        "prefill_street_1": invite.prefill_street_1,
+        "prefill_street_2": invite.prefill_street_2,
+        "prefill_city": invite.prefill_city,
+        "prefill_state": invite.prefill_state,
+        "prefill_zip_code": invite.prefill_zip_code,
+        "prefill_country": invite.prefill_country,
     }
 
 
 def create_invite(
     db: Session,
     email: str,
+    role: str,
     invited_by_user_id: int,
     expires_days: int,
     first_name: Optional[str] = None,
     last_name: Optional[str] = None,
     phone: Optional[str] = None,
-    address: Optional[str] = None,
+    street_1: Optional[str] = None,
+    street_2: Optional[str] = None,
+    city: Optional[str] = None,
+    state: Optional[str] = None,
+    zip_code: Optional[str] = None,
+    country: Optional[str] = None,
 ) -> Tuple[models.Invite, str]:
     normalized_email = (email or "").strip().lower()
+    normalized_role = (role or "").strip().lower()
     if not normalized_email:
         raise HTTPException(status_code=400, detail="Email is required.")
+    if normalized_role not in VALID_USER_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role specified.")
     if get_user_by_email(db, normalized_email):
         raise HTTPException(status_code=409, detail="User with this email already exists.")
 
@@ -484,14 +548,19 @@ def create_invite(
 
     invite = models.Invite(
         invited_email=normalized_email,
-        role="client",
+        role=normalized_role,
         token_hash=token_hash,
         invited_by_user_id=invited_by_user_id,
         expires_at=expires_at,
         prefill_first_name=(first_name or "").strip() or None,
         prefill_last_name=(last_name or "").strip() or None,
         prefill_phone=(phone or "").strip() or None,
-        prefill_address=(address or "").strip() or None,
+        prefill_street_1=(street_1 or "").strip() or None,
+        prefill_street_2=(street_2 or "").strip() or None,
+        prefill_city=(city or "").strip() or None,
+        prefill_state=(state or "").strip() or None,
+        prefill_zip_code=(zip_code or "").strip() or None,
+        prefill_country=(country or "").strip() or None,
     )
     db.add(invite)
     db.commit()
@@ -541,7 +610,12 @@ def accept_invite(
     first_name: str,
     last_name: str,
     phone: str,
-    address: str,
+    street_1: str,
+    street_2: Optional[str],
+    city: str,
+    state: str,
+    zip_code: str,
+    country: str,
     password: str,
 ) -> models.User:
     invite = get_valid_invite_by_token(db, token)
@@ -559,11 +633,18 @@ def accept_invite(
         schemas.UserCreate(
             email=invite.invited_email,
             name=full_name,
+            first_name=(first_name or "").strip(),
+            last_name=(last_name or "").strip(),
             password=password,
-            role="client",
+            role=invite.role,
             profile_data={
                 "phone": (phone or "").strip(),
-                "address": (address or "").strip(),
+                "street_1": (street_1 or "").strip(),
+                "street_2": (street_2 or "").strip(),
+                "city": (city or "").strip(),
+                "state": (state or "").strip(),
+                "zip_code": (zip_code or "").strip(),
+                "country": (country or "").strip(),
                 "auth_provider": "local",
                 "effective_role_source": "invite",
             },
@@ -668,6 +749,95 @@ def get_case_by_id(db: Session, case_id: int) -> Optional[models.Case]:
              .options(*comprehensive_case_load)\
              .filter(models.Case.id == case_id)\
              .first()
+
+
+def update_case(
+    db: Session,
+    case_id: int,
+    payload: schemas.CaseUpdate,
+) -> Optional[models.Case]:
+    db_case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not db_case:
+        return None
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "lawbase_case_number" in updates:
+        normalized_lawbase = (updates.get("lawbase_case_number") or "").strip()
+        if not normalized_lawbase:
+            raise HTTPException(status_code=400, detail="Lawbase case number cannot be empty.")
+        existing = (
+            db.query(models.Case.id)
+            .filter(
+                models.Case.lawbase_case_number == normalized_lawbase,
+                models.Case.id != case_id,
+            )
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail="Lawbase case number already exists.")
+        updates["lawbase_case_number"] = normalized_lawbase
+
+    if "case_type" in updates and "category" not in updates:
+        updates["category"] = updates["case_type"]
+    if "category" in updates and "case_type" not in updates:
+        updates["case_type"] = updates["category"]
+
+    for key, value in updates.items():
+        setattr(db_case, key, value)
+
+    db.commit()
+    db.refresh(db_case)
+    return get_case_by_id(db, case_id)
+
+
+def delete_case(db: Session, case_id: int) -> bool:
+    db_case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not db_case:
+        return False
+
+    client_ids = [client.id for client in db_case.clients]
+
+    request_ids = [
+        request_id
+        for (request_id,) in db.query(models.DocumentRequest.id)
+        .filter(models.DocumentRequest.case_id == case_id)
+        .all()
+    ]
+    if request_ids:
+        db.query(models.RequestedDocument).filter(
+            models.RequestedDocument.request_id.in_(request_ids)
+        ).delete(synchronize_session=False)
+        db.query(models.DocumentRequest).filter(
+            models.DocumentRequest.id.in_(request_ids)
+        ).delete(synchronize_session=False)
+
+    db.query(models.Message).filter(
+        models.Message.case_id == case_id
+    ).delete(synchronize_session=False)
+
+    db.query(models.AwaitingSMS).filter(
+        models.AwaitingSMS.assigned_case_id == case_id
+    ).update({models.AwaitingSMS.assigned_case_id: None}, synchronize_session=False)
+
+    db.execute(
+        models.case_personnel_association.delete().where(
+            models.case_personnel_association.c.case_id == case_id
+        )
+    )
+    db.execute(
+        models.case_client_association.delete().where(
+            models.case_client_association.c.case_id == case_id
+        )
+    )
+    db.delete(db_case)
+    db.commit()
+
+    for client_id in client_ids:
+        client_user = get_user_by_id(db, client_id)
+        if client_user and client_user.client_profile and client_user.client_profile.active_cases > 0:
+            client_user.client_profile.active_cases -= 1
+    db.commit()
+    return True
 
 def get_cases(db: Session, skip: int = 0, limit: int = 100):
     """Gets all cases, loading all related user and profile data."""
@@ -791,9 +961,22 @@ def create_case(db: Session, case: schemas.CaseCreate) -> models.Case:
         raise HTTPException(status_code=400, detail="Case must include at least one client assignment.")
 
     # 1. Prepare base data
+    normalized_lawbase_case_number = (case.lawbase_case_number or "").strip()
+    if not normalized_lawbase_case_number:
+        raise HTTPException(status_code=400, detail="Lawbase case number is required.")
+    existing_case = (
+        db.query(models.Case.id)
+        .filter(models.Case.lawbase_case_number == normalized_lawbase_case_number)
+        .first()
+    )
+    if existing_case:
+        raise HTTPException(status_code=409, detail="Lawbase case number already exists.")
+
     db_case = models.Case(
         title=case.title,
         description=case.description,
+        lawbase_case_number=normalized_lawbase_case_number,
+        case_type=(case.case_type or case.category or "General"),
         case_number=generate_case_number(db),
         case_serial=generate_case_serial(db),
         sms_id_tag=generate_sms_tag(db),
@@ -1345,6 +1528,28 @@ def get_all_documents_admin(
     )
 
 
+def count_documents_admin(db: Session, status: Optional[str] = None, search_term: Optional[str] = None) -> int:
+    query = (
+        db.query(func.count(models.RequestedDocument.id))
+        .join(models.DocumentRequest, models.RequestedDocument.request_id == models.DocumentRequest.id)
+        .join(models.Case, models.DocumentRequest.case_id == models.Case.id)
+    )
+
+    if status:
+        query = query.filter(models.RequestedDocument.status == status)
+
+    if search_term:
+        search_like = f"%{search_term}%"
+        query = query.filter(
+            or_(
+                models.RequestedDocument.name.ilike(search_like),
+                models.Case.title.ilike(search_like),
+            )
+        )
+
+    return query.scalar()
+
+
 def update_requested_document_status(
     db: Session,
     doc_id: int,
@@ -1392,8 +1597,16 @@ def update_client(db: Session, client_id: int, client_update: schemas.ClientUpda
         return None
     
     # Update Core User fields
+    first_name = (client_update.first_name or "").strip() if client_update.first_name is not None else None
+    last_name = (client_update.last_name or "").strip() if client_update.last_name is not None else None
+    if first_name is not None:
+        user.first_name = first_name or None
+    if last_name is not None:
+        user.last_name = last_name or None
     if client_update.name:
-        user.name = client_update.name
+        user.name = client_update.name.strip()
+    elif first_name is not None or last_name is not None:
+        user.name = _compose_name(user.first_name, user.last_name, user.name)
     if client_update.email:
         user.email = client_update.email
         
@@ -1401,8 +1614,20 @@ def update_client(db: Session, client_id: int, client_update: schemas.ClientUpda
     if user.client_profile:
         if client_update.phone:
             user.client_profile.phone = _normalize_phone_value(client_update.phone)
-        if client_update.address:
+        if client_update.address is not None:
             user.client_profile.address = client_update.address
+        if client_update.street_1 is not None:
+            user.client_profile.street_1 = (client_update.street_1 or "").strip() or None
+        if client_update.street_2 is not None:
+            user.client_profile.street_2 = (client_update.street_2 or "").strip() or None
+        if client_update.city is not None:
+            user.client_profile.city = (client_update.city or "").strip() or None
+        if client_update.state is not None:
+            user.client_profile.state = (client_update.state or "").strip() or None
+        if client_update.zip_code is not None:
+            user.client_profile.zip_code = (client_update.zip_code or "").strip() or None
+        if client_update.country is not None:
+            user.client_profile.country = (client_update.country or "").strip() or None
             
     db.commit()
     db.refresh(user)
@@ -1416,6 +1641,71 @@ def delete_user(db: Session, user_id: int):
         db.commit()
         return True
     return False
+
+
+def get_direct_conversations(db: Session, user_id: int) -> List[dict]:
+    """Return one entry per other user this user has DM'd, with unread count and last message."""
+    sid = models.DirectMessage.sender_id
+    rid = models.DirectMessage.receiver_id
+    user_a = case((sid > rid, sid), else_=rid).label("user_a")
+    user_b = case((sid < rid, sid), else_=rid).label("user_b")
+    subq = (
+        db.query(user_a, user_b, func.max(models.DirectMessage.id).label("last_msg_id"))
+        .filter(or_(sid == user_id, rid == user_id))
+        .group_by("user_a", "user_b")
+        .subquery()
+    )
+    rows = db.query(models.DirectMessage).join(subq, models.DirectMessage.id == subq.c.last_msg_id).all()
+    result = []
+    for msg in rows:
+        other_id = msg.receiver_id if msg.sender_id == user_id else msg.sender_id
+        other_user = get_user_by_id(db, other_id)
+        if not other_user:
+            continue
+        unread = (
+            db.query(func.count(models.DirectMessage.id))
+            .filter(
+                models.DirectMessage.receiver_id == user_id,
+                models.DirectMessage.sender_id == other_id,
+                models.DirectMessage.is_read == False,
+            )
+            .scalar()
+        )
+        result.append({"user": other_user, "last_message": msg, "unread_count": unread or 0})
+    return result
+
+
+def get_direct_messages(db: Session, user_id: int, other_user_id: int) -> List[models.DirectMessage]:
+    return (
+        db.query(models.DirectMessage)
+        .options(joinedload(models.DirectMessage.sender))
+        .filter(
+            or_(
+                and_(models.DirectMessage.sender_id == user_id, models.DirectMessage.receiver_id == other_user_id),
+                and_(models.DirectMessage.sender_id == other_user_id, models.DirectMessage.receiver_id == user_id),
+            )
+        )
+        .order_by(models.DirectMessage.timestamp)
+        .all()
+    )
+
+
+def create_direct_message(db: Session, sender_id: int, receiver_id: int, content: str) -> models.DirectMessage:
+    msg = models.DirectMessage(content=content, sender_id=sender_id, receiver_id=receiver_id)
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    db.refresh(msg, ["sender"])
+    return msg
+
+
+def mark_direct_messages_read(db: Session, reader_id: int, other_user_id: int) -> None:
+    db.query(models.DirectMessage).filter(
+        models.DirectMessage.receiver_id == reader_id,
+        models.DirectMessage.sender_id == other_user_id,
+        models.DirectMessage.is_read == False,
+    ).update({"is_read": True})
+    db.commit()
 
 
 def get_azure_synced_users(db: Session, limit: int = 200) -> List[models.User]:

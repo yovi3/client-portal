@@ -37,6 +37,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False) # 'lawyer', 'client', 'admin', 'accountant'
     aad_object_id = Column(String, unique=True, index=True, nullable=True)
@@ -71,6 +73,8 @@ class User(Base):
     )
     
     sent_messages = relationship("Message", back_populates="sender_user")
+    sent_direct_messages = relationship("DirectMessage", foreign_keys="DirectMessage.sender_id", back_populates="sender")
+    received_direct_messages = relationship("DirectMessage", foreign_keys="DirectMessage.receiver_id", back_populates="receiver")
     awaiting_sms = relationship(
         "AwaitingSMS",
         back_populates="client",
@@ -116,7 +120,12 @@ class Invite(Base):
     prefill_first_name = Column(String, nullable=True)
     prefill_last_name = Column(String, nullable=True)
     prefill_phone = Column(String, nullable=True)
-    prefill_address = Column(String, nullable=True)
+    prefill_street_1 = Column(String, nullable=True)
+    prefill_street_2 = Column(String, nullable=True)
+    prefill_city = Column(String, nullable=True)
+    prefill_state = Column(String, nullable=True)
+    prefill_zip_code = Column(String, nullable=True)
+    prefill_country = Column(String, nullable=True)
 
     invited_by_user = relationship("User", foreign_keys=[invited_by_user_id])
     accepted_user = relationship("User", foreign_keys=[accepted_user_id])
@@ -140,6 +149,12 @@ class ClientProfile(Base):
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     phone = Column(String, index=True) 
     address = Column(String)
+    street_1 = Column(String, nullable=True)
+    street_2 = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
+    country = Column(String, nullable=True)
     active_cases = Column(Integer, default=0)
     joined_date = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     user = relationship("User", back_populates="client_profile")
@@ -160,6 +175,8 @@ class Case(Base):
     status = Column(String, default="active")
     priority = Column(String, default="medium")
     category = Column(String, default="General")
+    case_type = Column(String, default="General")
+    lawbase_case_number = Column(String, unique=True, index=True, nullable=True)
     case_number = Column(Integer, unique=True, index=True, nullable=False)
     case_serial = Column(String(8), unique=True, index=True, nullable=False)
     # Deprecated: retained only for migration/backward compatibility
@@ -222,7 +239,26 @@ class Message(Base):
     )
 
 # =========================================================================
-# 4. AWAITING SMS
+# 4. DIRECT MESSAGES (user-to-user, not tied to a case)
+# =========================================================================
+
+class DirectMessage(Base):
+    __tablename__ = "direct_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(String, nullable=False)
+    timestamp = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    is_read = Column(Boolean, default=False)
+
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    receiver_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    sender = relationship("User", foreign_keys=[sender_id], back_populates="sent_direct_messages")
+    receiver = relationship("User", foreign_keys=[receiver_id], back_populates="received_direct_messages")
+
+
+# =========================================================================
+# 5. AWAITING SMS
 # =========================================================================
 
 class AwaitingSMS(Base):

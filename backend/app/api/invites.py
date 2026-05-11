@@ -28,12 +28,18 @@ def create_invite_route(
     invite, token = crud.create_invite(
         db=db,
         email=payload.email,
+        role=payload.role,
         invited_by_user_id=current_user.id,
         expires_days=settings.invite_expiry_days,
         first_name=payload.first_name,
         last_name=payload.last_name,
         phone=payload.phone,
-        address=payload.address,
+        street_1=payload.street_1,
+        street_2=payload.street_2,
+        city=payload.city,
+        state=payload.state,
+        zip_code=payload.zip_code,
+        country=payload.country,
     )
     return schemas.InviteCreateResponse(
         invite=schemas.Invite(**crud.serialize_invite(invite)),
@@ -64,11 +70,16 @@ def invite_preview_route(
         invited_email=invite.invited_email,
         role=invite.role,
         expires_at=invite.expires_at,
-        required_fields=["first_name", "last_name", "phone", "address", "password"],
+        required_fields=["first_name", "last_name", "phone", "street_1", "city", "state", "zip_code", "country", "password"],
         first_name=invite.prefill_first_name,
         last_name=invite.prefill_last_name,
         phone=invite.prefill_phone,
-        address=invite.prefill_address,
+        street_1=invite.prefill_street_1,
+        street_2=invite.prefill_street_2,
+        city=invite.prefill_city,
+        state=invite.prefill_state,
+        zip_code=invite.prefill_zip_code,
+        country=invite.prefill_country,
     )
 
 
@@ -83,7 +94,12 @@ def accept_invite_route(
         first_name=payload.first_name,
         last_name=payload.last_name,
         phone=payload.phone,
-        address=payload.address,
+        street_1=payload.street_1,
+        street_2=payload.street_2,
+        city=payload.city,
+        state=payload.state,
+        zip_code=payload.zip_code,
+        country=payload.country,
         password=payload.password,
     )
     return user

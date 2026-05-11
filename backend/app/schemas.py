@@ -2,6 +2,8 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 from typing import Optional, Any, Dict, List, Literal
 from datetime import datetime
 
+UserRole = Literal["client", "lawyer", "accounting", "other", "case manager", "admin"]
+
 # =========================================================================
 # USER PROFILES
 # =========================================================================
@@ -20,7 +22,13 @@ class LawyerProfileBase(BaseModel):
 class ClientProfileBase(BaseModel):
     # IMPORTANT: Must be in E.164 format, e.g., +48123456789
     phone: Optional[str] = None 
-    address: Optional[str] = None 
+    address: Optional[str] = None
+    street_1: Optional[str] = None
+    street_2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -32,9 +40,11 @@ class ClientProfileBase(BaseModel):
 
 class UserCreate(BaseModel):
     email: EmailStr
-    name: str 
+    name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     password: str
-    role: str 
+    role: UserRole
     profile_data: Optional[Dict[str, Any]] = None 
 
 
@@ -45,8 +55,10 @@ class UserLogin(BaseModel):
 class User(BaseModel):
     id: int
     email: EmailStr
-    name: str 
-    role: str 
+    name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: UserRole
     auth_provider: Optional[str] = None
     azure_groups: List[str] = Field(default_factory=list)
     effective_role_source: Optional[str] = None
@@ -77,6 +89,10 @@ class CaseClientAssignmentIn(BaseModel):
 
 
 class CaseCreate(CaseBase):
+    lawbase_case_number: str
+    case_type: Optional[str] = None
+    # Legacy compatibility
+    category: Optional[str] = None
     client_assignments: List[CaseClientAssignmentIn] | None = None
     # Legacy compatibility
     client_ids: List[int] | None = None
@@ -91,13 +107,23 @@ class CaseCreate(CaseBase):
         return self
 
 
+class CaseUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    lawbase_case_number: Optional[str] = None
+    case_type: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[str] = None
+    status: Optional[str] = None
+
+
 class CaseClientMember(User):
     case_role: Optional[CaseClientRoleType] = None
 
 
 class Case(CaseBase):
     id: int
-    case_number: int
+    lawbase_case_number: str
     case_serial: Optional[str] = None
     clients: List[CaseClientMember] = Field(default_factory=list)
     personnel: List[User] = Field(default_factory=list)
@@ -107,6 +133,8 @@ class Case(CaseBase):
     client_user: Optional[User] = None
     
     priority: str | None = None
+    case_type: str | None = None
+    # Legacy compatibility
     category: str | None = None
     status: str | None = None
     
@@ -114,6 +142,14 @@ class Case(CaseBase):
 
     class Config:
         from_attributes = True
+
+
+# =========================================================================
+# BATCH CASE DETAILS
+# =========================================================================
+
+class BatchDetailsRequest(BaseModel):
+    case_ids: List[int] = Field(default_factory=list, max_length=100)
 
 
 # =========================================================================
@@ -200,6 +236,32 @@ class Message(MessageBase):
         from_attributes = True
         
 # =========================================================================
+# DIRECT MESSAGE SCHEMAS
+# =========================================================================
+
+class DirectMessageBase(BaseModel):
+    content: str
+
+class DirectMessage(DirectMessageBase):
+    id: int
+    timestamp: datetime
+    sender_id: int
+    receiver_id: int
+    is_read: bool
+    sender: Optional[User] = None
+
+    class Config:
+        from_attributes = True
+
+class DirectConversation(BaseModel):
+    user: User
+    last_message: Optional[DirectMessage] = None
+    unread_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+# =========================================================================
 # OTHER UTILITY SCHEMAS
 # =========================================================================
         
@@ -221,6 +283,10 @@ class Notification(BaseModel):
         from_attributes = True
 
 class NotificationResponse(BaseModel):
+    notifications: List[Notification]
+
+class UserStatusResponse(BaseModel):
+    total_unread_count: int
     notifications: List[Notification]
 
 # Awaiting SMS & Assignment
@@ -270,12 +336,29 @@ class DocumentResponse(BaseModel):
 
     class Config:
         from_attributes = True
-        
+
+
+class PaginatedDocumentsResponse(BaseModel):
+    items: List[DocumentResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class ClientUpdate(BaseModel):
     name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    street_1: Optional[str] = None
+    street_2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
 
 
 class UserRoleUpdate(BaseModel):
@@ -293,8 +376,10 @@ class DocumentStatusUpdate(BaseModel):
 class AzureUserSync(BaseModel):
     id: int
     name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: EmailStr
-    role: str
+    role: UserRole
     aad_object_id: Optional[str] = None
     effective_role_source: Optional[str] = None
     last_azure_sync_at: Optional[datetime] = None
@@ -319,16 +404,22 @@ class RolePermission(BaseModel):
         from_attributes = True
 
 
-InviteRole = Literal["client"]
+InviteRole = UserRole
 InviteStatus = Literal["pending", "used", "expired"]
 
 
 class InviteCreate(BaseModel):
     email: EmailStr
+    role: InviteRole
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone: Optional[str] = None
-    address: Optional[str] = None
+    street_1: Optional[str] = None
+    street_2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
 
 
 class Invite(BaseModel):
@@ -345,7 +436,12 @@ class Invite(BaseModel):
     prefill_first_name: Optional[str] = None
     prefill_last_name: Optional[str] = None
     prefill_phone: Optional[str] = None
-    prefill_address: Optional[str] = None
+    prefill_street_1: Optional[str] = None
+    prefill_street_2: Optional[str] = None
+    prefill_city: Optional[str] = None
+    prefill_state: Optional[str] = None
+    prefill_zip_code: Optional[str] = None
+    prefill_country: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -364,7 +460,12 @@ class InvitePreview(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone: Optional[str] = None
-    address: Optional[str] = None
+    street_1: Optional[str] = None
+    street_2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
 
 
 class InviteAccept(BaseModel):
@@ -372,5 +473,10 @@ class InviteAccept(BaseModel):
     first_name: str
     last_name: str
     phone: str
-    address: str
+    street_1: str
+    street_2: Optional[str] = None
+    city: str
+    state: str
+    zip_code: str
+    country: str
     password: str

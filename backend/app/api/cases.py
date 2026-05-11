@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from .. import database, models, schemas, crud
 from ..deps import get_current_user
@@ -22,6 +22,8 @@ def _to_case_schema(
 
     case_schema = schemas.Case.from_orm(case)
     case_schema.unread_count = unread_count
+    case_schema.case_type = case.case_type or case.category
+    case_schema.category = case.category or case.case_type
     case_schema.client_id = case.clients[0].id if case.clients else None
     case_schema.client_user = case.clients[0] if case.clients else None
 
@@ -37,6 +39,27 @@ def _to_case_schema(
         case_schema.case_serial = None
 
     return case_schema
+
+
+@router.post("/cases/batch-details")
+def get_batch_case_details(
+    payload: schemas.BatchDetailsRequest,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> Dict[str, List[schemas.DocumentRequest]]:
+    if not payload.case_ids:
+        return {}
+
+    result = {}
+    for case_id in payload.case_ids:
+        try:
+            ensure_case_access(db, current_user, case_id)
+            requests = crud.get_all_requests_by_case(db, case_id)
+            result[str(case_id)] = requests
+        except HTTPException:
+            # Invalid or inaccessible case ID — skip silently
+            continue
+    return result
 
 
 @router.get("/cases", response_model=List[schemas.Case])
@@ -106,6 +129,35 @@ def create_case(
     return _to_case_schema(db, db_case, 0, current_user)
 
 
+@router.patch("/cases/{case_id}", response_model=schemas.Case)
+def update_case_route(
+    case_id: int,
+    payload: schemas.CaseUpdate,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_role(current_user, PERSONNEL_ROLES)
+    ensure_case_access(db, current_user, case_id)
+    updated = crud.update_case(db, case_id=case_id, payload=payload)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return _to_case_schema(db, updated, 0, current_user)
+
+
+@router.delete("/cases/{case_id}", status_code=204)
+def delete_case_route(
+    case_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_role(current_user, PERSONNEL_ROLES)
+    ensure_case_access(db, current_user, case_id)
+    deleted = crud.delete_case(db, case_id=case_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return Response(status_code=204)
+
+
 @router.post("/cases/{case_id}/personnel", response_model=schemas.User)
 def add_personnel_to_case(
     case_id: int,
@@ -121,7 +173,7 @@ def add_personnel_to_case(
         raise HTTPException(status_code=404, detail="Case not found")
 
     personnel_user = crud.get_user_by_id(db, user_id)
-    if not personnel_user or personnel_user.role not in ['lawyer', 'accountant', 'paralegal', 'legal assistant']:
+    if not personnel_user or personnel_user.role not in crud.PERSONNEL_ROLES:
         raise HTTPException(status_code=400, detail=f"User ID {user_id} is not valid personnel.")
 
     if any(p.id == user_id for p in db_case.personnel):

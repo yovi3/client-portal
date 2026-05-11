@@ -1,4 +1,4 @@
-const STAFF_ROLES = new Set(["lawyer", "accountant", "paralegal", "legal assistant", "admin"]);
+const STAFF_ROLES = new Set(["lawyer", "accounting", "other", "case manager", "admin"]);
 
 const getDocumentRequestItemCount = (documentRequest) =>
   (documentRequest?.requested_documents || []).length;

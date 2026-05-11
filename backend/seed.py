@@ -25,7 +25,7 @@ def seed_database():
     # --- FIX: Initialize all required IDs to avoid UnboundLocalError in exception handler ---
     lawyer_1_id: Optional[int] = None
     personnel_2_id: Optional[int] = None
-    accountant_id: Optional[int] = None
+    accounting_id: Optional[int] = None
     client_1_id: Optional[int] = None
     client_2_id: Optional[int] = None
     case_1_id: Optional[int] = None
@@ -53,20 +53,20 @@ def seed_database():
         # Lawyer 2 / Paralegal
         print("Creating Secondary Personnel (ID: 2)...")
         lawyer_data_2 = schemas.UserCreate(
-            email="paralegal@example.com", name="Bob Secondary", password="password123", 
-            role="paralegal", profile_data={"bar_number": "P-001"}
+            email="other@example.com", name="Bob Secondary", password="password123", 
+            role="other", profile_data={"bar_number": "P-001"}
         )
         personnel_2 = crud.create_user(db=db, user_data=lawyer_data_2)
         personnel_2_id = personnel_2.id
 
         # Accountant
         print("Creating Accountant (ID: 3)...")
-        accountant_data = schemas.UserCreate(
-            email="accountant@example.com", name="Charlie Accountant", password="password123", 
-            role="accountant", profile_data={"bar_number": "A-100"}
+        accounting_data = schemas.UserCreate(
+            email="accounting@example.com", name="Charlie Accountant", password="password123", 
+            role="accounting", profile_data={"bar_number": "A-100"}
         )
-        accountant = crud.create_user(db=db, user_data=accountant_data)
-        accountant_id = accountant.id
+        accounting = crud.create_user(db=db, user_data=accounting_data)
+        accounting_id = accounting.id
 
         # Client 1 (Smith)
         print(f"Creating Client 1 (Client Smith, ID: 4) with phone {TEST_CLIENT_PHONE_1}...")
@@ -95,6 +95,7 @@ def seed_database():
         case_in_1 = schemas.CaseCreate(
             title="Smith vs. World - Simple M2M",
             description="A test case with minimal M2M assignments.",
+            lawbase_case_number="LB-1001",
             client_ids=[client_1_id],
             personnel_ids=[lawyer_1_id],
         )
@@ -106,8 +107,9 @@ def seed_database():
         case_in_2 = schemas.CaseCreate(
             title="Complex Contract Review (TechCorp & Smith)",
             description="Case requiring multiple personnel types.",
+            lawbase_case_number="LB-1002",
             client_ids=[client_1_id, client_2_id],
-            personnel_ids=[lawyer_1_id, personnel_2_id, accountant_id],
+            personnel_ids=[lawyer_1_id, personnel_2_id, accounting_id],
         )
         case_2 = crud.create_case(db=db, case=case_in_2)
         case_2_id = case_2.id

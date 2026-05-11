@@ -1,59 +1,25 @@
-"use client";
-
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
-import { Scale, Bell, LogOut, ScanFace } from "lucide-react";
+import { Scale, Bell, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
 } from "@/components/ui/popover";
-import { apiFetch } from "@/lib/api";
-import { getStoredUser, fetchCurrentUser, clearStoredUser } from "@/lib/auth";
+import { useUser } from "@/lib/UserContext";
+import { usePolling } from "@/lib/PollingContext";
 
-export default function Header() {
-  const [user, setUser] = useState(() => getStoredUser());
-  
-  const [notifications, setNotifications] = useState([]);
-  const [hasUnread, setHasUnread] = useState(false);
+export default function Header({ mobileMenuTrigger }) {
+  const { user, logout } = useUser();
+  const { notifications, unreadCount, refetch } = usePolling();
   
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!user) {
-      fetchCurrentUser().then((u) => setUser(u));
-      return;
-    }
-    if (user.id && user.role) {
-      const fetchNotifications = async () => {
-        try {
-          const res = await apiFetch(`/users/${user.id}/notifications?role=${user.role}`);
-          if (!res.ok) {
-            throw new Error("Failed to fetch notifications");
-          }
-          const data = await res.json();
-          setNotifications(data.notifications || []);
-          setHasUnread(data.notifications.length > 0);
-        } catch (err) {
-          console.error(err.message);
-        }
-      };
-      
-      fetchNotifications();
-      const interval = setInterval(fetchNotifications, 60000); // Poll every 60 seconds
-      return () => clearInterval(interval);
-    }
-  }, [user]);
+  const hasUnread = notifications.length > 0 || unreadCount > 0;
 
   const handleLogout = async () => {
-    try {
-      await apiFetch("/auth/logout", { method: "POST" });
-    } catch (e) {
-      console.error(e);
-    }
-    clearStoredUser();
-    setUser(null);
+    await logout();
     navigate("/login");
   };
 
@@ -68,7 +34,6 @@ export default function Header() {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // Function to format "time ago" (simplified)
   const formatTimeAgo = (timestamp) => {
     const seconds = Math.floor((new Date() - new Date(timestamp)) / 1000);
     let interval = seconds / 31536000;
@@ -84,12 +49,9 @@ export default function Header() {
     return "Just now";
   };
   
-  // ✅ MODIFIED THIS FUNCTION
   const handleNotificationClick = (case_id) => {
-    setHasUnread(false); // Optimistically remove red dot
-    
-    // Navigate to the messages page with the case_id in the URL
-    navigate(`/messages?case_id=${case_id}`); 
+    navigate(`/messages?case_id=${case_id}`);
+    refetch();
   };
 
   if (!user) {
@@ -109,31 +71,37 @@ export default function Header() {
     <header className="sticky top-0 z-50 border-b bg-card">
       <div className="flex items-center justify-between gap-4 px-4 py-3">
         <div className="flex items-center gap-2">
-          <Scale className="h-5 w-5 text-primary" />
-          <span className="text-lg font-semibold text-foreground">Injury Case Portal</span>
+          {mobileMenuTrigger}
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard")}
+            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+          >
+            <Scale className="h-5 w-5 text-primary" />
+            <span className="text-lg font-semibold text-foreground">Injury Case Portal</span>
+          </button>
         </div>
 
         <div className="mr-1 flex items-center gap-2">
           {/* Notifications */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
+              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full" aria-label="Notifications">
                 <Bell className="h-4 w-4" />
                 {hasUnread && (
-                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full border border-background bg-red-500"></span>
+                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full border border-background bg-destructive"></span>
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent side="bottom" align="end" sideOffset={4} className="w-80">
+            <PopoverContent side="bottom" align="end" sideOffset={4} className="w-[calc(100vw-2rem)] sm:w-80">
               <h4 className="font-semibold mb-2 px-4">Notifications</h4>
-              <div className="flex flex-col">
+              <div className="flex flex-col" aria-live="polite">
                 {notifications.length > 0 ? (
                   notifications.map((notif) => (
                     <Button
                       key={notif.message_id}
                       variant="ghost"
                       className="h-auto w-full justify-start p-4 border-b last:border-b-0 rounded-none"
-                      // ✅ This now calls the modified function
                       onClick={() => handleNotificationClick(notif.case_id)}
                     >
                       <div className="flex flex-col items-start text-left">
@@ -186,13 +154,7 @@ export default function Header() {
                 </div>
                 <Button
                   variant="ghost"
-                  className="justify-start"
-                >
-                  <ScanFace className="h-4 w-4 mr-2" /> Profile
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="justify-start text-red-600"
+                  className="justify-start text-destructive"
                   onClick={handleLogout}
                 >
                   <LogOut className="h-4 w-4 mr-2" /> Logout

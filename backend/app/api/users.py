@@ -21,7 +21,7 @@ def get_total_unread_count_route(
 ):
     if current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Forbidden")
-    if current_user.role not in ['client', 'lawyer', 'accountant', 'paralegal', 'legal assistant', 'admin']:
+    if current_user.role not in crud.VALID_USER_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role specified.")
 
     count = crud.get_total_unread_count(db, user_id=current_user.id, role=current_user.role)
@@ -36,7 +36,7 @@ def get_user_notifications(
 ):
     if current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Forbidden")
-    if current_user.role not in ['client', 'lawyer', 'accountant', 'paralegal', 'legal assistant', 'admin']:
+    if current_user.role not in crud.VALID_USER_ROLES:
         raise HTTPException(status_code=400, detail="Invalid role specified.")
 
     db_notifications = crud.get_unread_message_notifications(db, user_id=current_user.id, role=current_user.role)
@@ -54,6 +54,35 @@ def get_user_notifications(
             )
         )
     return schemas.NotificationResponse(notifications=notifications_list)
+
+
+@router.get("/users/{user_id}/status", response_model=schemas.UserStatusResponse)
+def get_user_status(
+    user_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if current_user.role not in crud.VALID_USER_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role specified.")
+
+    count = crud.get_total_unread_count(db, user_id=current_user.id, role=current_user.role)
+    db_notifications = crud.get_unread_message_notifications(db, user_id=current_user.id, role=current_user.role)
+    notifications_list = []
+    for message, case_title, sender_name in db_notifications:
+        snippet = (message.content[:40] + '...') if len(message.content) > 40 else message.content
+        notifications_list.append(
+            schemas.Notification(
+                message_id=message.id,
+                content_snippet=snippet,
+                timestamp=message.timestamp,
+                case_id=message.case_id,
+                case_title=case_title,
+                sender_name=sender_name,
+            )
+        )
+    return schemas.UserStatusResponse(total_unread_count=count, notifications=notifications_list)
 
 
 @router.get("/users/azure-sync", response_model=List[schemas.AzureUserSync])
@@ -174,4 +203,33 @@ def delete_user_route(
     deleted = crud.delete_user(db, user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="User not found")
+    return Response(status_code=204)
+
+
+# ---- Direct Messages ----
+
+@router.get("/direct-messages", response_model=List[schemas.DirectConversation])
+def list_direct_conversations(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return crud.get_direct_conversations(db, current_user.id)
+
+
+@router.get("/direct-messages/{other_user_id}", response_model=List[schemas.DirectMessage])
+def get_direct_message_history(
+    other_user_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return crud.get_direct_messages(db, current_user.id, other_user_id)
+
+
+@router.post("/direct-messages/{other_user_id}/read", status_code=204)
+def mark_dm_read(
+    other_user_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    crud.mark_direct_messages_read(db, current_user.id, other_user_id)
     return Response(status_code=204)

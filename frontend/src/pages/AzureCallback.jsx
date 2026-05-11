@@ -15,8 +15,8 @@ export default function AzureCallback() {
   }, [])
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
-      <div className="w-full max-w-md bg-white shadow-md rounded-lg p-8 text-center">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-muted">
+      <div className="w-full max-w-md bg-card shadow-md rounded-lg p-8 text-center">
         <a href="/" className="inline-flex items-center gap-2 mb-6">
           <Scale className="h-8 w-8 text-black" />
           <span className="text-2xl font-semibold">Injury Case Portal</span>
@@ -38,12 +38,12 @@ export default function AzureCallback() {
 
         {status === "error" && (
           <div>
-            <div className="text-red-600 text-6xl mb-4">✗</div>
-            <h2 className="text-xl font-semibold mb-2 text-red-600">Sign-in Failed</h2>
-            <p className="text-gray-600 mb-4">{message}</p>
+            <div className="text-destructive text-6xl mb-4">✗</div>
+            <h2 className="text-xl font-semibold mb-2 text-destructive">Sign-in Failed</h2>
+            <p className="text-muted-foreground mb-4">{message}</p>
             <a
               href="/login"
-              className="inline-block bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800 transition-colors"
+              className="inline-block bg-primary text-primary-foreground px-6 py-2 rounded-md hover:bg-primary/90 transition-colors cursor-pointer"
             >
               Back to Login
             </a>

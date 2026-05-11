@@ -1,14 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Scale } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 
 const EMPTY_FORM = {
   first_name: "",
   last_name: "",
   phone: "",
-  address: "",
+  street_1: "",
+  street_2: "",
+  city: "",
+  state: "",
+  zip_code: "",
+  country: "US",
   password: "",
   confirmPassword: "",
 };
@@ -49,7 +54,12 @@ export default function InviteAcceptPage() {
           first_name: data.first_name || "",
           last_name: data.last_name || "",
           phone: data.phone || "",
-          address: data.address || "",
+          street_1: data.street_1 || "",
+          street_2: data.street_2 || "",
+          city: data.city || "",
+          state: data.state || "",
+          zip_code: data.zip_code || "",
+          country: data.country || "US",
         }));
       })
       .catch(() => {
@@ -75,7 +85,11 @@ export default function InviteAcceptPage() {
     if (!formData.first_name.trim()) return "First name is required.";
     if (!formData.last_name.trim()) return "Last name is required.";
     if (!formData.phone.trim()) return "Phone is required.";
-    if (!formData.address.trim()) return "Address is required.";
+    if (!formData.street_1.trim()) return "Street is required.";
+    if (!formData.city.trim()) return "City is required.";
+    if (!formData.state.trim()) return "State is required.";
+    if (!formData.zip_code.trim()) return "ZIP code is required.";
+    if (!formData.country.trim()) return "Country is required.";
     if (!formData.password) return "Password is required.";
     if (formData.password.length < 8) return "Password must be at least 8 characters.";
     if (formData.password !== formData.confirmPassword) return "Passwords do not match.";
@@ -100,7 +114,12 @@ export default function InviteAcceptPage() {
           first_name: formData.first_name.trim(),
           last_name: formData.last_name.trim(),
           phone: formData.phone.trim(),
-          address: formData.address.trim(),
+          street_1: formData.street_1.trim(),
+          street_2: formData.street_2.trim() || null,
+          city: formData.city.trim(),
+          state: formData.state.trim(),
+          zip_code: formData.zip_code.trim(),
+          country: formData.country.trim(),
           password: formData.password,
         }),
       });
@@ -119,9 +138,8 @@ export default function InviteAcceptPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
-      <Toaster richColors position="top-center" />
-      <div className="w-full max-w-lg rounded-lg bg-white p-8 shadow-md">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-muted">
+      <div className="w-full max-w-lg rounded-lg bg-card p-8 shadow-md">
         <div className="mb-6 text-center">
           <a href="/" className="inline-flex items-center gap-2 mb-4">
             <Scale className="h-8 w-8 text-black" />
@@ -131,10 +149,10 @@ export default function InviteAcceptPage() {
         </div>
 
         {isLoadingPreview ? (
-          <p className="text-center text-sm text-gray-600">Checking invite...</p>
+          <p className="text-center text-sm text-muted-foreground">Checking invite...</p>
         ) : error ? (
           <div className="space-y-3">
-            <p className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</p>
+            <p className="rounded-md border border-red-300 bg-destructive/10 p-3 text-sm text-red-700">{error}</p>
             <a href="/login" className="inline-block text-sm underline">
               Back to login
             </a>
@@ -146,7 +164,7 @@ export default function InviteAcceptPage() {
               <input
                 value={preview?.invited_email || ""}
                 disabled
-                className="w-full rounded-md border border-black bg-gray-100 px-3 py-2"
+                className="w-full rounded-md border border-black bg-muted px-3 py-2"
               />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -179,13 +197,60 @@ export default function InviteAcceptPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-black">Address</label>
+              <label className="mb-1 block text-sm font-medium text-black">Street 1</label>
               <input
-                name="address"
-                value={formData.address}
+                name="street_1"
+                value={formData.street_1}
                 onChange={handleChange}
                 className="w-full rounded-md border border-black px-3 py-2"
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-black">Street 2</label>
+              <input
+                name="street_2"
+                value={formData.street_2}
+                onChange={handleChange}
+                className="w-full rounded-md border border-black px-3 py-2"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-black">City</label>
+                <input
+                  name="city"
+                  value={formData.city}
+                  onChange={handleChange}
+                  className="w-full rounded-md border border-black px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-black">State</label>
+                <input
+                  name="state"
+                  value={formData.state}
+                  onChange={handleChange}
+                  className="w-full rounded-md border border-black px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-black">ZIP Code</label>
+                <input
+                  name="zip_code"
+                  value={formData.zip_code}
+                  onChange={handleChange}
+                  className="w-full rounded-md border border-black px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-black">Country</label>
+                <input
+                  name="country"
+                  value={formData.country}
+                  onChange={handleChange}
+                  className="w-full rounded-md border border-black px-3 py-2"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
@@ -212,7 +277,7 @@ export default function InviteAcceptPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full rounded-md bg-black py-2 font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+              className="w-full rounded-md bg-primary py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 cursor-pointer"
             >
               {isSubmitting ? "Creating account..." : "Create account"}
             </button>

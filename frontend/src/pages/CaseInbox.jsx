@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useMemo, useState } from "react"
 import MainLayout from "@/components/layout/MainLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,7 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, RefreshCw } from "lucide-react"
 import { apiFetch } from "@/lib/api"
 
-export default function CaseInbox() {
+function threadKey(thread) {
+  return `${thread.client_id || "unknown"}:${thread.client_phone_number}`
+}
+
+export function CaseInboxPanel() {
   const [threads, setThreads] = useState([])
   const [selectedThreadKey, setSelectedThreadKey] = useState("")
   const [messages, setMessages] = useState([])
@@ -87,18 +89,12 @@ export default function CaseInbox() {
     }
   }
 
-  useEffect(() => {
-    loadThreads()
-  }, [])
-
-  useEffect(() => {
-    loadMessagesForThread(selectedThread)
-  }, [selectedThreadKey])
+  useEffect(() => { loadThreads() }, [])
+  useEffect(() => { loadMessagesForThread(selectedThread) }, [selectedThreadKey])
 
   const assignMessageToCase = async (messageId) => {
     const selectedCaseId = Number(selectedCaseByMessage[messageId])
     if (!selectedCaseId) return
-
     const key = `assign-${messageId}`
     setActionKey(key)
     try {
@@ -108,8 +104,7 @@ export default function CaseInbox() {
         body: JSON.stringify({ case_id: selectedCaseId }),
       })
       if (!res.ok) {
-        const err = await res.text()
-        console.error(err)
+        console.error(await res.text())
         return
       }
       await Promise.all([loadThreads(), loadMessagesForThread(selectedThread)])
@@ -121,113 +116,121 @@ export default function CaseInbox() {
   }
 
   return (
-    <MainLayout>
-      <div className="p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Case Inbox</h1>
-          <Button variant="outline" onClick={loadThreads} disabled={isLoadingThreads}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
+    <div className="p-6 space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-foreground">SMS Inbox</h2>
+          <p className="text-sm text-muted-foreground">Incoming SMS threads pending assignment</p>
         </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle>Client Threads</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {isLoadingThreads && <p className="text-sm text-muted-foreground">Loading threads...</p>}
-              {!isLoadingThreads && threads.length === 0 && (
-                <p className="text-sm text-muted-foreground">No pending SMS in inbox.</p>
-              )}
-              {threads.map((thread) => {
-                const key = threadKey(thread)
-                const isActive = selectedThreadKey === key
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setSelectedThreadKey(key)}
-                    className={`w-full rounded border p-3 text-left transition ${
-                      isActive ? "border-primary bg-primary/5" : "hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-medium truncate">{thread.client_name || thread.client_phone_number}</p>
-                      <Badge variant="secondary">{thread.pending_count}</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{thread.client_phone_number}</p>
-                  </button>
-                )
-              })}
-            </CardContent>
-          </Card>
-
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Pending SMS Messages</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {!selectedThread && <p className="text-sm text-muted-foreground">Select a thread.</p>}
-              {selectedThread && isLoadingMessages && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading messages...
-                </div>
-              )}
-              {selectedThread && !isLoadingMessages && messages.length === 0 && (
-                <p className="text-sm text-muted-foreground">No pending messages for selected thread.</p>
-              )}
-              {selectedThread && !isLoadingMessages && messages.map((message) => (
-                <div key={message.id} className="rounded border p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(message.received_at).toLocaleString()}
-                    </p>
-                    <Badge variant="outline">#{message.id}</Badge>
-                  </div>
-                  <p className="text-sm">{message.sms_body}</p>
-                  {selectedThread.client_id ? (
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={selectedCaseByMessage[message.id] || ""}
-                        onValueChange={(value) =>
-                          setSelectedCaseByMessage((prev) => ({ ...prev, [message.id]: value }))
-                        }
-                      >
-                        <SelectTrigger className="max-w-[320px]">
-                          <SelectValue placeholder="Select case" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableCases.map((caseItem) => (
-                            <SelectItem key={caseItem.id} value={String(caseItem.id)}>
-                              #{caseItem.case_number} - {caseItem.title}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        onClick={() => assignMessageToCase(message.id)}
-                        disabled={!selectedCaseByMessage[message.id] || actionKey === `assign-${message.id}`}
-                      >
-                        Assign to Case
-                      </Button>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Client not recognized. Add client phone to a contact first.
-                    </p>
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
+        <Button variant="outline" size="sm" onClick={loadThreads} disabled={isLoadingThreads} className="cursor-pointer">
+          <RefreshCw className="mr-1.5 h-4 w-4" />
+          Refresh
+        </Button>
       </div>
-    </MainLayout>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="border-border shadow-none lg:col-span-1">
+          <CardHeader className="px-4 py-3 border-b border-border">
+            <CardTitle className="text-sm font-semibold text-foreground">Client Threads</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 pt-2">
+            {isLoadingThreads && <p className="text-sm text-muted-foreground">Loading threads...</p>}
+            {!isLoadingThreads && threads.length === 0 && (
+              <p className="text-sm text-muted-foreground">No pending SMS in inbox.</p>
+            )}
+            {threads.map((thread) => {
+              const key = threadKey(thread)
+              const isActive = selectedThreadKey === key
+              return (
+                <button
+                  key={key}
+                  onClick={() => setSelectedThreadKey(key)}
+                  className={`w-full rounded border p-3 text-left transition ${
+                    isActive ? "border-primary bg-primary/5" : "hover:bg-muted/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium truncate">{thread.client_name || thread.client_phone_number}</p>
+                    <Badge variant="secondary">{thread.pending_count}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{thread.client_phone_number}</p>
+                </button>
+              )
+            })}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border shadow-none lg:col-span-2">
+          <CardHeader className="px-4 py-3 border-b border-border">
+            <CardTitle className="text-sm font-semibold text-foreground">Pending SMS Messages</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-2">
+            {!selectedThread && <p className="text-sm text-muted-foreground">Select a thread.</p>}
+            {selectedThread && isLoadingMessages && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading messages...
+              </div>
+            )}
+            {selectedThread && !isLoadingMessages && messages.length === 0 && (
+              <p className="text-sm text-muted-foreground">No pending messages for selected thread.</p>
+            )}
+            {selectedThread && !isLoadingMessages && messages.map((message) => (
+              <div key={message.id} className="rounded border p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(message.received_at).toLocaleString()}
+                  </p>
+                  <Badge variant="outline">#{message.id}</Badge>
+                </div>
+                <p className="text-sm">{message.sms_body}</p>
+                {selectedThread.client_id ? (
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={selectedCaseByMessage[message.id] || ""}
+                      onValueChange={(value) =>
+                        setSelectedCaseByMessage((prev) => ({ ...prev, [message.id]: value }))
+                      }
+                    >
+                      <SelectTrigger className="max-w-[320px]">
+                        <SelectValue placeholder="Select case" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCases.map((caseItem) => (
+                          <SelectItem key={caseItem.id} value={String(caseItem.id)}>
+                            {caseItem.lawbase_case_number || "N/A"} - {caseItem.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={() => assignMessageToCase(message.id)}
+                      disabled={!selectedCaseByMessage[message.id] || actionKey === `assign-${message.id}`}
+                    >
+                      Assign to Case
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">Client not recognized.</p>
+                    <Button size="sm" variant="outline" onClick={() => { window.location.href = "/clients" }}>
+                      Invite Client
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   )
 }
 
-function threadKey(thread) {
-  return `${thread.client_id || "unknown"}:${thread.client_phone_number}`
+export default function CaseInbox() {
+  return (
+    <MainLayout>
+      <CaseInboxPanel />
+    </MainLayout>
+  )
 }

@@ -41,7 +41,7 @@ class Settings:
         self.azure_fallback_role = _get_env("AZURE_FALLBACK_ROLE", "client")
         self.azure_role_priority = [
             role.strip()
-            for role in (_get_env("AZURE_ROLE_PRIORITY", "admin,lawyer,accountant,paralegal,legal assistant,client") or "").split(",")
+            for role in (_get_env("AZURE_ROLE_PRIORITY", "admin,lawyer,accounting,other,case manager,client") or "").split(",")
             if role.strip()
         ]
         self.azure_allowed_group_ids = {

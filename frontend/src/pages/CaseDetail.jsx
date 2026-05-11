@@ -1,701 +1,1080 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { ArrowLeft, UserPlus, Plus, FileText, Download, Loader2, X, MessageSquare, Search, User, Send } from "lucide-react"
+import {
+  ArrowLeft,
+  UserPlus,
+  Plus,
+  FileText,
+  Download,
+  Loader2,
+  X,
+  MessageSquare,
+  Search,
+  Send,
+  Briefcase,
+  Hash,
+  Tag,
+  Mail,
+} from "lucide-react"
 import MainLayout from "../components/layout/MainLayout"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
-import { Badge } from "../components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { motion as Motion } from "framer-motion"
-import { API_BASE_URL, CLIENT_BASE_URL, getWsBaseUrl, apiFetch } from "@/lib/api"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select"
+import { Avatar, AvatarFallback } from "../components/ui/avatar"
+import { Badge } from "../components/ui/badge"
+import { ScrollArea } from "../components/ui/scroll-area"
+import { API_BASE_URL, getWsBaseUrl, apiFetch } from "@/lib/api"
 import { getStoredUser, fetchCurrentUser } from "@/lib/auth"
-import { STAFF_ROLES, getDocumentRequestBody, getDocumentRequestTitle } from "@/lib/documentRequestText"
+import { toast } from "sonner"
 
+const getInitials = (name) =>
+  (name || "?")
+    .split(" ")
+    .map((n) => n[0])
+    .filter(Boolean)
+    .join("")
+    .toUpperCase()
+    .slice(0, 2)
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return ""
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+}
+
+const formatDateSeparator = (timestamp) => {
+  const date = new Date(timestamp)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (date.toDateString() === today.toDateString()) return "Today"
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday"
+  return date.toLocaleDateString([], {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  })
+}
+
+const isSameDay = (a, b) => {
+  if (!a || !b) return false
+  const da = new Date(a)
+  const db = new Date(b)
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  )
+}
 
 export default function CaseDetail() {
-  const navigate = useNavigate();
-  const { id } = useParams();
+  const navigate = useNavigate()
+  const { id } = useParams()
 
   // --- Main Data States ---
-  const [caseData, setCaseData] = useState(null);
-  const [personnel, setPersonnel] = useState([]);
-  const [clients, setClients] = useState([]);
-  const [documents, setDocuments] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [caseData, setCaseData] = useState(null)
+  const [personnel, setPersonnel] = useState([])
+  const [clients, setClients] = useState([])
+  const [documents, setDocuments] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
 
   // --- Modal & Search States ---
-  const [addPersonnelOpen, setAddPersonnelOpen] = useState(false);
-  const [addClientOpen, setAddClientOpen] = useState(false);
+  const [addPersonnelOpen, setAddPersonnelOpen] = useState(false)
+  const [addClientOpen, setAddClientOpen] = useState(false)
 
-  const [personnelSearch, setPersonnelSearch] = useState("");
-  const [clientSearch, setClientSearch] = useState("");
-  const [clientRoleToAssign, setClientRoleToAssign] = useState("client");
+  const [personnelSearch, setPersonnelSearch] = useState("")
+  const [clientSearch, setClientSearch] = useState("")
+  const [clientRoleToAssign, setClientRoleToAssign] = useState("client")
 
-  const [searchResultsPersonnel, setSearchResultsPersonnel] = useState([]);
-  const [searchResultsClients, setSearchResultsClients] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  
+  const [searchResultsPersonnel, setSearchResultsPersonnel] = useState([])
+  const [searchResultsClients, setSearchResultsClients] = useState([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [actionKey, setActionKey] = useState("")
+
   // --- Chat States ---
-  const [currentUser, setCurrentUser] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [messageInput, setMessageInput] = useState("");
-  const messagesEndRef = useRef(null);
-  const ws = useRef(null);
+  const [currentUser, setCurrentUser] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [newMessage, setNewMessage] = useState("")
+  const messagesEndRef = useRef(null)
+  const ws = useRef(null)
 
   const fetchCaseDocuments = useCallback(async () => {
-    if (!id) return;
+    if (!id) return
     try {
-      const res = await apiFetch(`/cases/${id}/requests`);
-      if (!res.ok) return;
-      const requests = await res.json();
+      const res = await apiFetch(`/cases/${id}/requests`)
+      if (!res.ok) return
+      const requests = await res.json()
       const docs =
-        requests?.flatMap(
-          (req) =>
-            req?.requested_documents?.filter(
-              (doc) => doc.status === "uploaded" || doc.status === "reviewed",
-            ) || [],
-        ) || [];
-      setDocuments(docs);
-    } catch (e) {
-      console.error("Failed to load documents", e);
+        requests?.flatMap((req) => req?.requested_documents || []) || []
+      setDocuments(docs)
+    } catch {
+      toast.error("Failed to load documents")
     }
-  }, [id]);
+  }, [id])
 
-  // --- 1. Load User ---
   useEffect(() => {
-    const stored = getStoredUser();
+    const stored = getStoredUser()
     if (stored) {
-      setCurrentUser(stored);
-      return;
+      setCurrentUser(stored)
+      return
     }
-    fetchCurrentUser().then((u) => setCurrentUser(u));
-  }, []);
+    fetchCurrentUser().then((u) => setCurrentUser(u))
+  }, [])
 
-  // --- 2. Fetch Case Details (Main Data) ---
   const fetchCaseDetails = useCallback(async () => {
     try {
-      const caseRes = await apiFetch(`/cases/${id}`);
-      if (!caseRes.ok) throw new Error("Case not found");
+      const caseRes = await apiFetch(`/cases/${id}`)
+      if (!caseRes.ok) throw new Error("Case not found")
 
-      const data = await caseRes.json();
-      
-      setCaseData(data || {});
-      setPersonnel(data?.personnel || []);
-      setClients(data?.clients || []);
-    } catch (error) {
-      console.error(error);
-      setCaseData(null);
+      const data = await caseRes.json()
+
+      setCaseData(data || {})
+      setPersonnel(data?.personnel || [])
+      setClients(data?.clients || [])
+    } catch {
+      toast.error("Failed to load case")
+      setCaseData(null)
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  }, [id]);
+  }, [id])
 
   useEffect(() => {
-    if (id) fetchCaseDetails();
-  }, [id, fetchCaseDetails]);
+    if (id) fetchCaseDetails()
+  }, [id, fetchCaseDetails])
 
-  // --- 2b. Fetch documents for case ---
   useEffect(() => {
-    fetchCaseDocuments();
-  }, [fetchCaseDocuments]);
-  
-  
-  // --- 3. Chat Logic (Fetch & WebSocket) ---
-  
-  // Fetch History
+    fetchCaseDocuments()
+  }, [fetchCaseDocuments])
+
+  // --- Chat fetch history ---
   useEffect(() => {
-    if (!id) return;
+    if (!id) return
     const fetchMessages = async () => {
       try {
-        const res = await apiFetch(`/cases/${id}/messages`);
+        const res = await apiFetch(`/cases/${id}/messages`)
         if (res.ok) {
-          const data = await res.json();
-          setMessages(data);
+          const data = await res.json()
+          setMessages(Array.isArray(data) ? data : [])
         }
-      } catch (e) {
-        console.error("Failed to load messages", e);
+      } catch {
+        toast.error("Failed to load messages")
       }
-    };
-    fetchMessages();
-  }, [id]);
+    }
+    fetchMessages()
+  }, [id])
 
-  // WebSocket Connection
+  // --- WebSocket ---
   useEffect(() => {
-    if (!id || !currentUser) return;
-    
-    // Construct WS URL
-    const wsUrl = `${getWsBaseUrl()}/ws/${id}`;
-    ws.current = new WebSocket(wsUrl);
+    if (!id || !currentUser) return
 
-    ws.current.onopen = () => {
-       console.log("Connected to Chat WS");
-    };
+    const wsUrl = `${getWsBaseUrl()}/ws/${id}`
+    ws.current = new WebSocket(wsUrl)
 
     ws.current.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data);
+        const msg = JSON.parse(event.data)
         setMessages((prev) => {
-          // Avoid duplicates
-          if (prev.some(m => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
+          if (prev.some((m) => m.id === msg.id)) return prev
+          return [...prev, msg]
+        })
       } catch (e) {
-        console.error("WS Message Parse Error", e);
+        console.error("WS Message Parse Error", e)
       }
-    };
+    }
 
     return () => {
-      ws.current?.close();
-    };
-  }, [id, currentUser]);
+      ws.current?.close()
+    }
+  }, [id, currentUser])
 
-  // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
 
-  const handleSendMessage = () => {
-    if (!messageInput.trim() || !ws.current || !currentUser) return;
-    
-    const payload = {
-      content: messageInput,
-      sender_id: currentUser.id
-    };
-    
-    ws.current.send(JSON.stringify(payload));
-    setMessageInput("");
-  };
+  const senderLookup = useMemo(() => {
+    const map = new Map()
+    personnel.forEach((p) => map.set(p.id, p.name))
+    clients.forEach((c) => map.set(c.id, c.name))
+    return map
+  }, [personnel, clients])
 
-  const getSenderName = (senderId) => {
-      if (currentUser && senderId === currentUser.id) return "You";
-      
-      const person = personnel.find(p => p.id === senderId);
-      if (person) return person.name;
-      
-      const client = clients.find(c => c.id === senderId);
-      if (client) return client.name;
-      
-      return "Unknown";
-  };
+  const getSenderName = useCallback(
+    (msg) => {
+      if (currentUser && msg.sender_id === currentUser.id) return "You"
+      if (msg.sender_user?.name) return msg.sender_user.name
+      return senderLookup.get(msg.sender_id) || "Unknown"
+    },
+    [currentUser, senderLookup]
+  )
 
+  const sendMessage = () => {
+    const text = newMessage.trim()
+    if (!text || !ws.current || ws.current.readyState !== WebSocket.OPEN || !currentUser) return
+    ws.current.send(
+      JSON.stringify({
+        content: text,
+        sender_id: currentUser.id,
+      })
+    )
+    setNewMessage("")
+  }
 
-  // --- 4. Search Handlers (Personnel & Clients) ---
-  
-  // Search Personnel Effect
+  // --- Search Personnel ---
   useEffect(() => {
     const searchPersonnel = async () => {
-      if (!addPersonnelOpen) return;
-      setIsSearching(true);
+      if (!addPersonnelOpen) return
+      setIsSearching(true)
       try {
-        const res = await apiFetch(`/available-personnel?search=${personnelSearch}`);
+        const res = await apiFetch(
+          `/available-personnel?search=${personnelSearch}`
+        )
         if (res.ok) {
-          const data = await res.json();
-          const filtered = data.filter(u => !personnel.some(p => p.id === u.id));
-          setSearchResultsPersonnel(filtered);
+          const data = await res.json()
+          const filtered = data.filter(
+            (u) => !personnel.some((p) => p.id === u.id)
+          )
+          setSearchResultsPersonnel(filtered)
         }
       } catch (error) {
-        console.error("Search error", error);
+        console.error("Search error", error)
       } finally {
-        setIsSearching(false);
+        setIsSearching(false)
       }
-    };
+    }
 
-    const timeoutId = setTimeout(searchPersonnel, 300);
-    return () => clearTimeout(timeoutId);
-  }, [personnelSearch, addPersonnelOpen, personnel]);
+    const timeoutId = setTimeout(searchPersonnel, 300)
+    return () => clearTimeout(timeoutId)
+  }, [personnelSearch, addPersonnelOpen, personnel])
 
-  // Search Clients Effect
+  // --- Search Clients ---
   useEffect(() => {
     const searchClients = async () => {
-      if (!addClientOpen) return;
-      setIsSearching(true);
+      if (!addClientOpen) return
+      setIsSearching(true)
       try {
-        const res = await apiFetch(`/available-clients?search=${clientSearch}`);
+        const res = await apiFetch(`/available-clients?search=${clientSearch}`)
         if (res.ok) {
-          const data = await res.json();
-          const filtered = data.filter(u => !clients.some(c => c.id === u.id));
-          setSearchResultsClients(filtered);
+          const data = await res.json()
+          const filtered = data.filter(
+            (u) => !clients.some((c) => c.id === u.id)
+          )
+          setSearchResultsClients(filtered)
         }
       } catch (error) {
-        console.error("Search error", error);
+        console.error("Search error", error)
       } finally {
-        setIsSearching(false);
+        setIsSearching(false)
       }
-    };
+    }
 
-    const timeoutId = setTimeout(searchClients, 300);
-    return () => clearTimeout(timeoutId);
-  }, [clientSearch, addClientOpen, clients]);
-
-
-  // --- 5. Add/Remove Action Handlers ---
+    const timeoutId = setTimeout(searchClients, 300)
+    return () => clearTimeout(timeoutId)
+  }, [clientSearch, addClientOpen, clients])
 
   const handleAddPersonnel = async (user) => {
-    const roleToAssign = user.role || "staff"; 
+    const roleToAssign = user.role || "staff"
+    setActionKey(`add-personnel-${user.id}`)
     try {
       const res = await apiFetch(
-        `/cases/${id}/personnel?user_id=${user.id}&role=${roleToAssign}`, 
+        `/cases/${id}/personnel?user_id=${user.id}&role=${roleToAssign}`,
         { method: "POST" }
-      );
-      
+      )
+
       if (res.ok) {
-        await fetchCaseDetails(); 
-        await fetchCaseDocuments();
-        setAddPersonnelOpen(false);
-        setPersonnelSearch("");
+        await fetchCaseDetails()
+        await fetchCaseDocuments()
+        toast.success("Personnel assigned")
+        setAddPersonnelOpen(false)
+        setPersonnelSearch("")
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.detail || "Failed to assign personnel")
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      toast.error("Failed to assign personnel")
+    } finally {
+      setActionKey("")
     }
-  };
+  }
 
   const handleRemovePersonnel = async (personnelId) => {
+    setActionKey(`remove-personnel-${personnelId}`)
     try {
       const res = await apiFetch(`/cases/${id}/personnel/${personnelId}`, {
-        method: "DELETE"
-      });
+        method: "DELETE",
+      })
       if (res.ok) {
-        setPersonnel(prev => prev.filter(p => p.id !== personnelId));
-        await fetchCaseDocuments();
+        setPersonnel((prev) => prev.filter((p) => p.id !== personnelId))
+        await fetchCaseDocuments()
+        toast.success("Personnel removed")
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.detail || "Failed to remove personnel")
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      toast.error("Failed to remove personnel")
+    } finally {
+      setActionKey("")
     }
-  };
+  }
 
   const handleAddClient = async (user) => {
+    setActionKey(`add-client-${user.id}`)
     try {
       const res = await apiFetch(
-        `/cases/${id}/clients?user_id=${user.id}&role_type=${encodeURIComponent(clientRoleToAssign)}`,
+        `/cases/${id}/clients?user_id=${user.id}&role_type=${encodeURIComponent(
+          clientRoleToAssign
+        )}`,
         { method: "POST" }
-      );
+      )
 
       if (res.ok) {
-        await fetchCaseDetails(); 
-        await fetchCaseDocuments();
-        setAddClientOpen(false);
-        setClientSearch("");
-        setClientRoleToAssign("client");
+        await fetchCaseDetails()
+        await fetchCaseDocuments()
+        toast.success("Client assigned")
+        setAddClientOpen(false)
+        setClientSearch("")
+        setClientRoleToAssign("client")
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.detail || "Failed to assign client")
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      toast.error("Failed to assign client")
+    } finally {
+      setActionKey("")
     }
-  };
+  }
 
   const handleRemoveClient = async (clientId) => {
+    setActionKey(`remove-client-${clientId}`)
     try {
       const res = await apiFetch(`/cases/${id}/clients/${clientId}`, {
-        method: "DELETE"
-      });
+        method: "DELETE",
+      })
       if (res.ok) {
-        setClients(prev => prev.filter(c => c.id !== clientId));
-        await fetchCaseDocuments();
+        setClients((prev) => prev.filter((c) => c.id !== clientId))
+        await fetchCaseDocuments()
+        toast.success("Client removed")
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.detail || "Failed to remove client")
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      toast.error("Failed to remove client")
+    } finally {
+      setActionKey("")
     }
-  };
+  }
 
   const handleDocumentDownload = (doc) => {
-    if (!doc?.file_path) return;
-    window.open(`${API_BASE_URL}/documents/${doc.id}/download`, "_blank");
-  };
+    if (!doc?.file_path) return
+    window.open(`${API_BASE_URL}/documents/${doc.id}/download`, "_blank")
+  }
 
   if (isLoading) {
     return (
       <MainLayout>
-        <div className="p-6 text-center">
-          <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-3" />
-          <p>Loading case details...</p>
+        <div className="flex flex-col items-center justify-center py-24">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mb-3" />
+          <p className="text-sm text-muted-foreground">Loading case details...</p>
         </div>
       </MainLayout>
-    );
+    )
   }
 
   if (!caseData) {
     return (
       <MainLayout>
-        <div className="p-6 text-center">
-          <p className="text-xl font-semibold text-red-500">Case Not Found</p>
-          <Button variant="link" onClick={() => navigate("/cases")}>Go Back</Button>
+        <div className="p-6 text-center py-16">
+          <p className="text-base font-semibold text-foreground mb-3">
+            Case not found
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/cases")}
+          >
+            Back to Cases
+          </Button>
         </div>
       </MainLayout>
-    );
+    )
   }
 
-  const canManageCase = currentUser && currentUser.role !== "client";
+  const canManageCase = currentUser && currentUser.role !== "client"
+  const primaryClient = clients?.[0]
 
   return (
     <MainLayout>
-      <Motion.div className="p-6 max-w-7xl mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+      <div className="p-6 space-y-5">
 
-        <div className="grid gap-6 lg:grid-cols-3">
-
-          {/* LEFT SIDE: Buttons + Case Info + (Personnel | Clients) + Documents */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* BUTTONS ROW (Moved Inside Left Column) */}
-            <div className="flex justify-between gap-3">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/cases")}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Cases
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate(`/messages?case_id=${id}`)}>
-                <MessageSquare className="mr-2 h-4 w-4" /> Go to Messages
-              </Button>
+        {/* Page header */}
+        <div className="flex items-start gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/cases")}
+            className="h-9 w-9 -ml-2 shrink-0 cursor-pointer"
+            aria-label="Back to cases"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[22px] font-bold tracking-tight text-foreground leading-tight truncate">
+              {caseData?.title || "Untitled Case"}
+            </h1>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {caseData?.lawbase_case_number && (
+                <span className="inline-flex items-center gap-1">
+                  <Hash className="h-3 w-3" />
+                  {caseData.lawbase_case_number}
+                </span>
+              )}
+              {caseData?.case_type && (
+                <span className="inline-flex items-center gap-1">
+                  <Tag className="h-3 w-3" />
+                  {caseData.case_type}
+                </span>
+              )}
+              {primaryClient && (
+                <span className="inline-flex items-center gap-1">
+                  <Briefcase className="h-3 w-3" />
+                  {primaryClient.name}
+                </span>
+              )}
             </div>
+          </div>
+        </div>
 
-            {/* CASE INFO */}
-            <Card className="shadow-lg">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-2xl mb-2">{caseData?.title || "Untitled Case"}</CardTitle>
-                    <CardDescription>Case Number: {caseData?.case_number ?? "N/A"}</CardDescription>
-                    {currentUser?.role === "admin" && (
-                      <CardDescription>Case Serial: {caseData?.case_serial || "N/A"}</CardDescription>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    {/* <Badge variant={getStatusColor(caseData?.status)}>
-                      {(caseData?.status || "unknown").toUpperCase()}
-                    </Badge>
-                    <Badge variant={getPriorityColor(caseData?.priority)}>
-                      {(caseData?.priority || "unknown").toUpperCase()} PRIORITY
-                    </Badge> */}
-                  </div>
-                </div>
+        {/* Two-column body */}
+        <div
+          className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(380px,460px)] gap-5 lg:h-[calc(100vh-11rem)]"
+        >
+          {/* === LEFT: INFO === */}
+          <div className="space-y-4 min-w-0 lg:h-full lg:overflow-y-auto lg:pr-1 -mr-1">
+
+            {/* Case details */}
+            <Card className="border-border shadow-none">
+              <CardHeader className="px-5 py-3 border-b border-border">
+                <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Case Details
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <Label>Description</Label>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {caseData?.description || "No description available"}
-                </p>
+              <CardContent className="px-5 py-4 space-y-4">
+                {caseData?.description ? (
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {caseData.description}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">
+                    No description provided.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-1">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Type
+                    </p>
+                    <p className="text-sm text-foreground mt-0.5">
+                      {caseData?.case_type || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Lawbase #
+                    </p>
+                    <p className="text-sm text-foreground mt-0.5">
+                      {caseData?.lawbase_case_number || "—"}
+                    </p>
+                  </div>
+                  {caseData?.status && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Status
+                      </p>
+                      <Badge
+                        variant="secondary"
+                        className="mt-0.5 capitalize font-medium"
+                      >
+                        {caseData.status}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
-            {/* --- ROW WRAPPER FOR PERSONNEL AND CLIENTS --- */}
-            <div className="grid gap-6 md:grid-cols-2">
-              
-              {/* PERSONNEL CARD */}
-              <Card className="shadow-md">
-                <CardHeader className="flex items-center justify-between">
-                  <CardTitle>DSS Team</CardTitle>
+            {/* Team + Client side-by-side on wide screens */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              {/* DSS Team */}
+              <Card className="border-border shadow-none">
+                <CardHeader className="px-5 py-3 border-b border-border flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    DSS Team
+                    <span className="ml-1.5 text-muted-foreground/60 font-medium normal-case tracking-normal">
+                      ({personnel?.length || 0})
+                    </span>
+                  </CardTitle>
                   {canManageCase && (
-                    <Dialog open={addPersonnelOpen} onOpenChange={setAddPersonnelOpen}>
+                    <Dialog
+                      open={addPersonnelOpen}
+                      onOpenChange={setAddPersonnelOpen}
+                    >
                       <DialogTrigger asChild>
-                        <Button size="sm" variant="outline">
-                          <UserPlus className="h-4 w-4" />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 -mr-1 cursor-pointer"
+                        >
+                          <UserPlus className="h-3.5 w-3.5" />
                         </Button>
                       </DialogTrigger>
                       <DialogContent className="sm:max-w-[450px]">
                         <DialogHeader>
                           <DialogTitle>Add Personnel</DialogTitle>
                         </DialogHeader>
-                      
-                      {/* SEARCH SECTION */}
-                      <div className="space-y-4 py-2">
-                        
-                        <div className="relative">
+                        <div className="space-y-3 py-2">
+                          <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                                placeholder="Search available personnel..." 
-                                className="pl-9"
-                                value={personnelSearch}
-                                onChange={(e) => setPersonnelSearch(e.target.value)}
+                            <Input
+                              placeholder="Search available personnel..."
+                              className="pl-9"
+                              value={personnelSearch}
+                              onChange={(e) =>
+                                setPersonnelSearch(e.target.value)
+                              }
                             />
-                        </div>
-                        
-                        <div className="border rounded-md h-[200px] overflow-y-auto p-1">
+                          </div>
+                          <div className="border rounded-md h-[220px] overflow-y-auto p-1">
                             {isSearching ? (
-                                <div className="flex items-center justify-center h-full"><Loader2 className="h-4 w-4 animate-spin"/></div>
+                              <div className="flex items-center justify-center h-full">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              </div>
                             ) : searchResultsPersonnel.length === 0 ? (
-                                <p className="text-xs text-center text-muted-foreground py-4">No matching personnel found.</p>
+                              <div className="py-4 px-3 flex items-center justify-between gap-2">
+                                <p className="text-xs text-muted-foreground">
+                                  No matching personnel found.
+                                </p>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => navigate("/admin-dashboard")}
+                                >
+                                  Invite User
+                                </Button>
+                              </div>
                             ) : (
-                                searchResultsPersonnel.map(person => (
-                                    <div key={person.id} className="flex items-center justify-between p-2 hover:bg-accent rounded cursor-pointer group" onClick={() => handleAddPersonnel(person)}>
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                                <User className="h-4 w-4 text-primary" />
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-medium leading-none">{person.name}</p>
-                                                <p className="text-xs text-muted-foreground capitalize">{person.role || "No Role"}</p>
-                                            </div>
-                                        </div>
-                                        <Button size="icon" variant="ghost" className="h-8 w-8 opacity-0 group-hover:opacity-100">
-                                            <Plus className="h-4 w-4" />
-                                        </Button>
+                              searchResultsPersonnel.map((person) => (
+                                <div
+                                  key={person.id}
+                                  className="flex items-center justify-between p-2 hover:bg-accent rounded cursor-pointer group"
+                                  onClick={() => handleAddPersonnel(person)}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <Avatar className="h-8 w-8">
+                                      <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-semibold">
+                                        {getInitials(person.name)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                      <p className="text-sm font-medium leading-none">
+                                        {person.name}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground capitalize mt-0.5">
+                                        {person.role || "No Role"}
+                                      </p>
                                     </div>
-                                ))
+                                  </div>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                                    disabled={
+                                      actionKey ===
+                                      `add-personnel-${person.id}`
+                                    }
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ))
                             )}
+                          </div>
                         </div>
-                      </div>
                       </DialogContent>
                     </Dialog>
                   )}
                 </CardHeader>
-                <CardContent>
-                  {personnel?.length === 0 && <p className="text-sm text-muted-foreground">No personnel assigned.</p>}
-                  {personnel?.map(p => (
-                    <div key={p.id} className="flex items-center justify-between p-3 bg-muted rounded-lg mb-2">
-                      <div>
-                        <p className="font-medium text-sm">{p.name}</p>
-                        <p className="text-xs capitalize text-primary">{p.role}</p>
-                      </div>
-                      {canManageCase && (
-                        <Button variant="ghost" size="sm" onClick={() => handleRemovePersonnel(p.id)}>
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
+                <CardContent className="p-0">
+                  {personnel?.length === 0 ? (
+                    <div className="px-5 py-4 text-center">
+                      <p className="text-xs text-muted-foreground">
+                        No personnel assigned
+                      </p>
                     </div>
-                  ))}
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {personnel.map((p) => (
+                        <li
+                          key={p.id}
+                          className="flex items-center justify-between px-5 py-2.5 group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Avatar className="h-8 w-8 shrink-0">
+                              <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-semibold">
+                                {getInitials(p.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground leading-tight truncate">
+                                {p.name}
+                              </p>
+                              <p className="text-xs capitalize text-muted-foreground mt-0.5">
+                                {p.role || "staff"}
+                              </p>
+                            </div>
+                          </div>
+                          {canManageCase && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              onClick={() => handleRemovePersonnel(p.id)}
+                              disabled={actionKey === `remove-personnel-${p.id}`}
+                            >
+                              {actionKey === `remove-personnel-${p.id}` ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <X className="h-3 w-3" />
+                              )}
+                            </Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </CardContent>
               </Card>
 
-              {/* CLIENTS CARD */}
-              <Card className="shadow-md">
-                <CardHeader className="flex items-center justify-between">
-                  <CardTitle>Clients</CardTitle>
+              {/* Clients */}
+              <Card className="border-border shadow-none">
+                <CardHeader className="px-5 py-3 border-b border-border flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Clients
+                    <span className="ml-1.5 text-muted-foreground/60 font-medium normal-case tracking-normal">
+                      ({clients?.length || 0})
+                    </span>
+                  </CardTitle>
                   {canManageCase && (
-                    <Dialog open={addClientOpen} onOpenChange={setAddClientOpen}>
+                    <Dialog
+                      open={addClientOpen}
+                      onOpenChange={setAddClientOpen}
+                    >
                       <DialogTrigger asChild>
-                        <Button size="sm" variant="outline"><Plus className="h-4 w-4" /></Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 -mr-1 cursor-pointer"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
                       </DialogTrigger>
                       <DialogContent className="sm:max-w-[450px]">
-                        <DialogHeader><DialogTitle>Add Client</DialogTitle></DialogHeader>
-                      
-                      {/* SEARCH SECTION */}
-                      <div className="space-y-4 py-2">
-                        <div className="space-y-1">
-                          <Label>Client Role in Case</Label>
-                          <Select value={clientRoleToAssign} onValueChange={setClientRoleToAssign}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="client">client</SelectItem>
-                              <SelectItem value="spouse">spouse</SelectItem>
-                              <SelectItem value="legal guardian">legal guardian</SelectItem>
-                              <SelectItem value="other">other</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="relative">
+                        <DialogHeader>
+                          <DialogTitle>Add Client</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3 py-2">
+                          <div className="space-y-1">
+                            <Label>Client Role in Case</Label>
+                            <Select
+                              value={clientRoleToAssign}
+                              onValueChange={setClientRoleToAssign}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="client">client</SelectItem>
+                                <SelectItem value="spouse">spouse</SelectItem>
+                                <SelectItem value="legal guardian">
+                                  legal guardian
+                                </SelectItem>
+                                <SelectItem value="other">other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="relative">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input 
-                                placeholder="Search available clients..." 
-                                className="pl-9"
-                                value={clientSearch}
-                                onChange={(e) => setClientSearch(e.target.value)}
+                            <Input
+                              placeholder="Search available clients..."
+                              className="pl-9"
+                              value={clientSearch}
+                              onChange={(e) => setClientSearch(e.target.value)}
                             />
-                        </div>
-                        
-                        <div className="border rounded-md h-[200px] overflow-y-auto p-1">
+                          </div>
+                          <div className="border rounded-md h-[220px] overflow-y-auto p-1">
                             {isSearching ? (
-                                <div className="flex items-center justify-center h-full"><Loader2 className="h-4 w-4 animate-spin"/></div>
+                              <div className="flex items-center justify-center h-full">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              </div>
                             ) : searchResultsClients.length === 0 ? (
-                                <p className="text-xs text-center text-muted-foreground py-4">No matching clients found.</p>
+                              <div className="py-4 px-3 flex items-center justify-between gap-2">
+                                <p className="text-xs text-muted-foreground">
+                                  No matching clients found.
+                                </p>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => navigate("/clients")}
+                                >
+                                  Invite Client
+                                </Button>
+                              </div>
                             ) : (
-                                searchResultsClients.map(client => (
-                                    <div key={client.id} className="flex items-center justify-between p-2 hover:bg-accent rounded cursor-pointer group" onClick={() => handleAddClient(client)}>
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                                                <span className="text-xs font-bold text-blue-600">{(client.name || "?").charAt(0)}</span>
-                                            </div>
-                                            <div className="overflow-hidden">
-                                                <p className="text-sm font-medium leading-none truncate">{client.name}</p>
-                                                <p className="text-xs text-muted-foreground truncate">{client.email}</p>
-                                            </div>
-                                        </div>
-                                        <Button size="icon" variant="ghost" className="h-8 w-8 opacity-0 group-hover:opacity-100">
-                                            <Plus className="h-4 w-4" />
-                                        </Button>
+                              searchResultsClients.map((client) => (
+                                <div
+                                  key={client.id}
+                                  className="flex items-center justify-between p-2 hover:bg-accent rounded cursor-pointer group"
+                                  onClick={() => handleAddClient(client)}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <Avatar className="h-8 w-8">
+                                      <AvatarFallback className="bg-muted text-foreground text-[11px] font-semibold">
+                                        {getInitials(client.name)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="overflow-hidden">
+                                      <p className="text-sm font-medium leading-none truncate">
+                                        {client.name}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                        {client.email}
+                                      </p>
                                     </div>
-                                ))
+                                  </div>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                                    disabled={
+                                      actionKey === `add-client-${client.id}`
+                                    }
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ))
                             )}
+                          </div>
                         </div>
-                      </div>
                       </DialogContent>
                     </Dialog>
                   )}
                 </CardHeader>
-                <CardContent>
-                  {clients?.length === 0 && <p className="text-sm text-muted-foreground">No clients assigned.</p>}
-                  {clients?.map(c => (
-                    <div key={c.id} className="flex items-center justify-between p-3 bg-muted rounded-lg mb-2">
-                      <div>
-                        <p className="font-medium text-sm">{c.name}</p>
-                        <p className="text-xs text-muted-foreground">{c.email}</p>
-                        <p className="text-xs capitalize text-primary">{c.case_role || "client"}</p>
-                      </div>
-                      {canManageCase && (
-                        <Button variant="ghost" size="sm" onClick={() => handleRemoveClient(c.id)}>
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
+                <CardContent className="p-0">
+                  {clients?.length === 0 ? (
+                    <div className="px-5 py-4 text-center">
+                      <p className="text-xs text-muted-foreground">
+                        No clients assigned
+                      </p>
                     </div>
-                  ))}
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {clients.map((c) => (
+                        <li
+                          key={c.id}
+                          className="flex items-center justify-between px-5 py-2.5 group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Avatar className="h-8 w-8 shrink-0">
+                              <AvatarFallback className="bg-muted text-foreground text-[11px] font-semibold">
+                                {getInitials(c.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground leading-tight truncate">
+                                {c.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
+                                <Mail className="h-3 w-3 shrink-0" />
+                                <span className="truncate">{c.email}</span>
+                                <span className="text-muted-foreground/60">·</span>
+                                <span className="capitalize">
+                                  {c.case_role || "client"}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                          {canManageCase && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                              onClick={() => handleRemoveClient(c.id)}
+                              disabled={actionKey === `remove-client-${c.id}`}
+                            >
+                              {actionKey === `remove-client-${c.id}` ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <X className="h-3 w-3" />
+                              )}
+                            </Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </CardContent>
               </Card>
-
             </div>
-            {/* --- END ROW WRAPPER --- */}
 
-            {/* DOCUMENTS FULL WIDTH */}
-            <Card className="shadow-md">
-              <CardHeader>
-                <CardTitle>Documents</CardTitle>
+            {/* Documents */}
+            <Card className="border-border shadow-none">
+              <CardHeader className="px-5 py-3 border-b border-border">
+                <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Documents
+                  <span className="ml-1.5 text-muted-foreground/60 font-medium normal-case tracking-normal">
+                    ({documents?.length || 0})
+                  </span>
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                {documents?.length === 0 && <p className="text-sm text-muted-foreground">No documents uploaded.</p>}
-                {documents?.map(doc => (
-                  <div key={doc.id} className="flex items-center justify-between p-3 bg-muted rounded-lg mb-2">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <p className="text-sm">{doc.name}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" disabled={!doc?.file_path} onClick={() => handleDocumentDownload(doc)}>
-                      <Download className="h-4 w-4" />
-                    </Button>
+              <CardContent className="p-0">
+                {documents?.length === 0 ? (
+                  <div className="px-5 py-6 text-center">
+                    <FileText className="h-6 w-6 text-muted-foreground/40 mx-auto mb-2" />
+                    <p className="text-xs text-muted-foreground">
+                      No document requests
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {documents.map((doc) => {
+                      const uploaded = !!doc.file_path
+                      return (
+                        <li
+                          key={doc.id}
+                          className="flex items-center justify-between px-5 py-2.5 hover:bg-muted/50/60 gap-3"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              className={`h-7 w-7 rounded-md flex items-center justify-center shrink-0 ${
+                                uploaded
+                                  ? "bg-blue-50 text-blue-600"
+                                  : "bg-amber-50 text-amber-600"
+                              }`}
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                            </div>
+                            <p className="text-sm text-foreground truncate">
+                              {doc.name}
+                            </p>
+                          </div>
+                          <div className="shrink-0">
+                            {uploaded ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs cursor-pointer"
+                                onClick={() => handleDocumentDownload(doc)}
+                              >
+                                <Download className="h-3.5 w-3.5 mr-1" />
+                                Download
+                              </Button>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] text-amber-700 bg-amber-50 border-amber-200 font-medium"
+                              >
+                                Required
+                              </Badge>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
               </CardContent>
             </Card>
+          </div>
 
-          </div> {/* END LEFT SIDE */}
-
-          {/* RIGHT SIDE CHAT */}
-          {/* h-full + removed sticky/items-start ensures it stretches to match Left Column height */}
-          <div className="hidden lg:flex flex-col border rounded-xl shadow-md h-full bg-background overflow-hidden">
-            <div className="p-4 border-b">
-                <h2 className="font-semibold flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                Case Messages
-                </h2>
+          {/* === RIGHT: CHAT === */}
+          <Card className="border-border shadow-none overflow-hidden flex flex-col lg:h-full h-[600px]">
+            {/* Chat header */}
+            <div className="px-5 py-3 border-b border-border flex items-center justify-between bg-card shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <MessageSquare className="h-4 w-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground leading-tight">
+                    Conversation
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {personnel?.length || 0} team · {clients?.length || 0}{" "}
+                    client{(clients?.length || 0) === 1 ? "" : "s"}
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs cursor-pointer text-muted-foreground hover:text-foreground"
+                onClick={() => navigate(`/messages?case_id=${id}`)}
+              >
+                Open full
+              </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto bg-muted/20 p-4 space-y-4">
-              {messages.length === 0 && (
-                 <div className="text-center text-sm text-muted-foreground py-10">
-                    <p>No messages yet.</p>
-                 </div>
-              )}
-              
-              {messages.map((msg) => {
-                  const isMe = currentUser && msg.sender_id === currentUser.id;
-                  const senderName = getSenderName(msg.sender_id);
-                  const isDocumentRequest = msg.message_type === "document_request";
-                  const docRequest = msg.document_request;
-                  const documentRequestLabel = getDocumentRequestTitle(currentUser?.role);
-                  const documentRequestBody = getDocumentRequestBody(currentUser?.role, docRequest, {
-                    clientCount: caseData?.clients?.length || clients.length || 1,
-                  });
-                  const requestedDocuments = docRequest?.requested_documents || [];
-                  const uploadedCount = requestedDocuments.filter(
-                    (doc) => doc.status === "uploaded" || doc.status === "reviewed",
-                  ).length;
-                  const totalRequested = requestedDocuments.length;
-                  const hasUploads = uploadedCount > 0;
-                  const isCompleted =
-                    docRequest?.status === "completed" ||
-                    (totalRequested > 0 && uploadedCount === totalRequested);
-
-                  return (
-                    <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                        <div className={`flex gap-2 max-w-[80%] ${isMe ? "flex-row-reverse" : "flex-row"}`}>
-                            <div className="h-8 w-8 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center border border-primary/20">
-                                <span className="text-xs font-bold text-primary">{senderName.charAt(0)}</span>
-                            </div>
-                            
-                            <div>
-                                <div className={`flex items-baseline gap-2 mb-1 ${isMe ? "justify-end" : "justify-start"}`}>
-                                    <span className="text-xs text-muted-foreground">{senderName}</span>
-                                    <span className="text-[10px] text-muted-foreground opacity-70">
-                                        {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                    </span>
-                                </div>
-                                
-                                <div className={`p-3 rounded-2xl text-sm ${
-                                    isMe 
-                                    ? "bg-primary text-primary-foreground rounded-tr-none" 
-                                    : "bg-muted text-foreground rounded-tl-none"
-                                }`}>
-                                    {isDocumentRequest && (
-                                      <p className="text-xs font-semibold mb-1 opacity-80">{documentRequestLabel}</p>
-                                    )}
-                                    <p>{isDocumentRequest ? documentRequestBody : msg.content}</p>
-                                    {isDocumentRequest && docRequest && (
-                                      <div className="mt-2 space-y-1">
-                                        {requestedDocuments.map((doc) => (
-                                          <p key={doc.id} className="text-xs opacity-90">- {doc.name}</p>
-                                        ))}
-                                        {STAFF_ROLES.has(currentUser?.role) ? (
-                                          hasUploads ? (
-                                            <Button
-                                              size="sm"
-                                              variant={isMe ? "secondary" : "outline"}
-                                              className="h-7 mt-2"
-                                              onClick={() => navigate(`/messages?case_id=${id}`)}
-                                            >
-                                              Review uploads
-                                            </Button>
-                                          ) : (
-                                            <p className="text-xs mt-2 opacity-90">Pending client uploads.</p>
-                                          )
-                                        ) : (
-                                          <>
-                                            {isCompleted ? (
-                                              <p className="text-xs mt-2 font-medium text-green-700">
-                                                Successfully uploaded document{totalRequested === 1 ? "" : "s"}.
-                                              </p>
-                                            ) : (
-                                              docRequest.access_token && (
-                                                <Button
-                                                  size="sm"
-                                                  variant={isMe ? "secondary" : "outline"}
-                                                  className="h-7 mt-2"
-                                                  onClick={() =>
-                                                    window.open(`${CLIENT_BASE_URL}/requests/${docRequest.access_token}`, "_blank")
-                                                  }
-                                                >
-                                                  Upload documents
-                                                </Button>
-                                              )
-                                            )}
-                                          </>
-                                        )}
-                                      </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+            {/* Messages */}
+            <div className="flex-1 min-h-0 overflow-hidden bg-muted/40">
+              <ScrollArea className="h-full">
+                <div className="px-4 py-4 space-y-3">
+                  {messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <MessageSquare className="h-8 w-8 text-muted-foreground/40 mb-3" />
+                      <p className="text-sm text-muted-foreground">No messages yet</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Send the first message below
+                      </p>
                     </div>
-                  );
-              })}
-              <div ref={messagesEndRef} />
+                  ) : (
+                    messages.slice(-50).map((msg, idx, arr) => {
+                      const isMe =
+                        currentUser && msg.sender_id === currentUser.id
+                      const senderName = getSenderName(msg)
+                      const isDocumentRequest =
+                        msg.message_type === "document_request"
+                      const prev = arr[idx - 1]
+                      const showDate =
+                        idx === 0 || !isSameDay(prev?.timestamp, msg.timestamp)
+
+                      return (
+                        <div key={msg.id}>
+                          {showDate && msg.timestamp && (
+                            <div className="flex items-center gap-3 my-3">
+                              <div className="flex-1 h-px bg-muted" />
+                              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                                {formatDateSeparator(msg.timestamp)}
+                              </span>
+                              <div className="flex-1 h-px bg-muted" />
+                            </div>
+                          )}
+                          <div
+                            className={`flex ${
+                              isMe ? "justify-end" : "justify-start"
+                            }`}
+                          >
+                            <div
+                              className={`flex gap-2 max-w-[85%] ${
+                                isMe ? "flex-row-reverse" : "flex-row"
+                              }`}
+                            >
+                              <Avatar className="h-7 w-7 mt-0.5 shrink-0">
+                                <AvatarFallback
+                                  className={
+                                    isMe
+                                      ? "bg-primary text-primary-foreground text-[10px] font-semibold"
+                                      : "bg-muted text-foreground text-[10px] font-semibold"
+                                  }
+                                >
+                                  {getInitials(senderName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div
+                                className={`space-y-0.5 min-w-0 ${
+                                  isMe ? "items-end" : "items-start"
+                                } flex flex-col`}
+                              >
+                                <p
+                                  className={`text-[10px] font-medium text-muted-foreground px-1 ${
+                                    isMe ? "text-right" : "text-left"
+                                  }`}
+                                >
+                                  {senderName}
+                                </p>
+                                <div
+                                  className={`px-3 py-2 rounded-2xl text-sm leading-snug break-words ${
+                                    isMe
+                                      ? "bg-primary text-primary-foreground rounded-br-sm"
+                                      : "bg-card border border-border text-foreground rounded-bl-sm"
+                                  }`}
+                                >
+                                  {isDocumentRequest ? (
+                                    <span className="inline-flex items-center gap-1.5 italic opacity-90">
+                                      <FileText className="h-3.5 w-3.5" />
+                                      Document request
+                                    </span>
+                                  ) : (
+                                    <span>{msg.content}</span>
+                                  )}
+                                </div>
+                                <p
+                                  className={`text-[10px] text-muted-foreground px-1 ${
+                                    isMe ? "text-right" : "text-left"
+                                  }`}
+                                >
+                                  {formatTime(msg.timestamp)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
             </div>
 
-            <div className="p-3 border-t bg-background">
-              <div className="flex gap-2">
-                <Input 
-                    placeholder="Type a message..." 
-                    className="flex-1" 
-                    value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+            {/* Composer */}
+            <div className="p-3 border-t border-border bg-card shrink-0">
+              <div className="flex gap-2 items-center bg-muted/40 rounded-full pl-4 pr-1 py-1 border border-transparent focus-within:border-primary/40 focus-within:bg-card transition-colors">
+                <Input
+                  placeholder="Type your message..."
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      sendMessage()
+                    }
+                  }}
+                  className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-8 text-sm"
                 />
-                <Button size="icon" onClick={handleSendMessage} disabled={!messageInput.trim()}>
-                    <Send className="h-4 w-4" />
+                <Button
+                  onClick={sendMessage}
+                  size="icon"
+                  disabled={!newMessage.trim()}
+                  className="h-8 w-8 rounded-full shrink-0 cursor-pointer"
+                  aria-label="Send message"
+                >
+                  <Send className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
-          </div>
-
+          </Card>
         </div>
-      </Motion.div>
+      </div>
     </MainLayout>
-  );
+  )
 }

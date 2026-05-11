@@ -9,10 +9,10 @@ import { Input } from "../components/ui/input"
 import { Textarea } from "../components/ui/textarea"
 import { Label } from "../components/ui/label"
 import { Badge } from "../components/ui/badge"
-import { ArrowLeft, X, Search } from "lucide-react"
+import { ArrowLeft, X, Search, Loader2, Send } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { motion as Motion } from "framer-motion"
 import { apiFetch } from "@/lib/api"
+import { toast } from "sonner"
 
 export default function CreateCase() {
   const navigate = useNavigate()
@@ -20,7 +20,8 @@ export default function CreateCase() {
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    category: "",
+    case_type: "",
+    lawbase_case_number: "",
   })
 
   // Search inputs and results
@@ -32,6 +33,7 @@ export default function CreateCase() {
   // Selected lists
   const [selectedPersonnel, setSelectedPersonnel] = useState([])
   const [selectedClients, setSelectedClients] = useState([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Helper to update basic fields
   const handleInputChange = (field, value) => {
@@ -52,7 +54,7 @@ export default function CreateCase() {
         const data = await res.json()
         setPersonnelResults(data || [])
       } catch (err) {
-        console.error("Personnel search error:", err)
+        toast.error("Personnel search failed")
         setPersonnelResults([])
       }
     }, 300)
@@ -73,7 +75,7 @@ export default function CreateCase() {
         const data = await res.json()
         setClientResults(data || [])
       } catch (err) {
-        console.error("Client search error:", err)
+        toast.error("Client search failed")
         setClientResults([])
       }
     }, 300)
@@ -118,14 +120,19 @@ export default function CreateCase() {
     e.preventDefault()
 
     if (selectedClients.length === 0 || selectedPersonnel.length === 0) {
-      alert("Please assign at least one client and one personnel.")
+      toast.error("Please assign at least one client and one personnel.")
+      return
+    }
+    if (!formData.lawbase_case_number.trim()) {
+      toast.error("Lawbase Case Number is required.")
       return
     }
 
     const payload = {
       title: formData.title,
       description: formData.description,
-      category: formData.category || null,
+      lawbase_case_number: formData.lawbase_case_number.trim(),
+      case_type: formData.case_type || null,
       personnel_ids: selectedPersonnel.map((p) => p.id),
       client_assignments: selectedClients.map((c) => ({
         user_id: c.id,
@@ -133,6 +140,7 @@ export default function CreateCase() {
       })),
     }
 
+    setIsSubmitting(true)
     try {
       const res = await apiFetch("/cases", {
         method: "POST",
@@ -141,45 +149,43 @@ export default function CreateCase() {
       })
 
       if (!res.ok) {
-        const err = await res.text()
-        console.error("Create case failed:", err)
-        alert("Failed to create case. See console for details.")
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.detail || "Failed to create case")
         return
       }
 
       const created = await res.json()
+      toast.success("Case created")
       navigate(`/cases/${created.id}`)
     } catch (err) {
-      console.error("Create case error:", err)
-      alert("Failed to create case. See console for details.")
+      toast.error("Failed to create case")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   return (
     <MainLayout>
-      <Motion.div
-        className="p-6 max-w-6xl mx-auto"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.25 }}
-      >
-        <Button variant="ghost" onClick={() => navigate("/cases")} className="mb-6">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Cases
-        </Button>
+      <div className="p-6 max-w-5xl mx-auto space-y-5">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/cases")} className="cursor-pointer">
+            <ArrowLeft className="mr-1.5 h-4 w-4" />
+            Cases
+          </Button>
+        </div>
 
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Create New Case</h1>
-          <p className="text-muted-foreground text-lg">Fill in the details below to initiate a new injury case</p>
+        <div>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Create New Case</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">Fill in the details below to initiate a new injury case</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Case information */}
-          <Card className="border-2">
-            <CardHeader className="bg-muted/30">
-              <CardTitle className="text-xl">Case Information</CardTitle>
+          <Card className="border-border shadow-none">
+            <CardHeader className="px-4 py-3 border-b border-border bg-muted/30">
+              <CardTitle className="text-sm font-semibold text-foreground">Case Information</CardTitle>
               <p className="text-sm text-muted-foreground mt-3 pt-3 border-t">
-                Case Number and Case Serial are generated automatically after creation.
+                Case Serial is generated automatically after creation.
               </p>
             </CardHeader>
             <CardContent className="pt-6 space-y-5">
@@ -206,11 +212,20 @@ export default function CreateCase() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-base font-semibold">Category</Label>
+                  <Label className="text-base font-semibold">Lawbase Case Number *</Label>
+                  <Input
+                    required
+                    placeholder="e.g., LB-2026-00012"
+                    value={formData.lawbase_case_number}
+                    onChange={(e) => handleInputChange("lawbase_case_number", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-base font-semibold">Case Type</Label>
                   <Input
                     placeholder="e.g., Property, Criminal..."
-                    value={formData.category}
-                    onChange={(e) => handleInputChange("category", e.target.value)}
+                    value={formData.case_type}
+                    onChange={(e) => handleInputChange("case_type", e.target.value)}
                   />
                 </div>
               </div>
@@ -220,9 +235,9 @@ export default function CreateCase() {
           {/* Personnel + Clients row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Personnel */}
-            <Card className="border-2">
-              <CardHeader className="bg-muted/30">
-                <CardTitle className="text-xl">Assign Personnel</CardTitle>
+            <Card className="border-border shadow-none">
+              <CardHeader className="px-4 py-3 border-b border-border bg-muted/30">
+                <CardTitle className="text-sm font-semibold text-foreground">Personnel</CardTitle>
               </CardHeader>
               <CardContent className="pt-4 space-y-3">
                 <div className="flex gap-2">
@@ -251,6 +266,15 @@ export default function CreateCase() {
                     ))}
                   </div>
                 )}
+                {personnelSearch.trim().length >= 2 && personnelResults.length === 0 && (
+                  <div className="rounded border border-dashed p-3 flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">No personnel found.</p>
+                    <Button type="button" variant="outline" size="sm" onClick={() => navigate("/admin-dashboard")}>
+                      <Send className="h-4 w-4 mr-2" />
+                      Invite User
+                    </Button>
+                  </div>
+                )}
 
                 {selectedPersonnel.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-2">
@@ -268,9 +292,9 @@ export default function CreateCase() {
             </Card>
 
             {/* Clients */}
-            <Card className="border-2">
-              <CardHeader className="bg-muted/30">
-                <CardTitle className="text-xl">Assign Clients</CardTitle>
+            <Card className="border-border shadow-none">
+              <CardHeader className="px-4 py-3 border-b border-border bg-muted/30">
+                <CardTitle className="text-sm font-semibold text-foreground">Client</CardTitle>
               </CardHeader>
               <CardContent className="pt-4 space-y-3">
                 <div className="flex gap-2">
@@ -297,6 +321,15 @@ export default function CreateCase() {
                         <div className="text-sm text-primary">Add</div>
                       </div>
                     ))}
+                  </div>
+                )}
+                {clientSearch.trim().length >= 2 && clientResults.length === 0 && (
+                  <div className="rounded border border-dashed p-3 flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">No clients found.</p>
+                    <Button type="button" variant="outline" size="sm" onClick={() => navigate("/clients")}>
+                      <Send className="h-4 w-4 mr-2" />
+                      Invite Client
+                    </Button>
                   </div>
                 )}
 
@@ -330,16 +363,16 @@ export default function CreateCase() {
           </div>
 
           {/* Submit */}
-          <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={() => navigate("/cases")} size="lg">
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => navigate("/cases")} className="cursor-pointer">
               Cancel
             </Button>
-            <Button type="submit" size="lg">
-              Create Case
+            <Button type="submit" disabled={isSubmitting} className="bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer">
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating...</> : "Create Case"}
             </Button>
           </div>
         </form>
-      </Motion.div>
+      </div>
     </MainLayout>
   )
 }

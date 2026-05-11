@@ -43,6 +43,49 @@ def get_ws_db():
         db.close()
 
 
+@router.websocket("/ws/dm/{other_user_id}")
+async def websocket_dm_endpoint(
+    websocket: WebSocket,
+    other_user_id: int,
+    db: Session = Depends(get_ws_db),
+):
+    token = websocket.cookies.get(settings.auth_cookie_name)
+    if not token:
+        await websocket.close(code=1008)
+        return
+
+    try:
+        payload = auth.decode_access_token(token)
+        user_id = int(payload.get("sub"))
+    except Exception:
+        await websocket.close(code=1008)
+        return
+
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        await websocket.close(code=1008)
+        return
+
+    room = f"dm_{min(user_id, other_user_id)}_{max(user_id, other_user_id)}"
+    await manager.connect(websocket, room)
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            sender_id = data.get("sender_id")
+            if not sender_id or int(sender_id) != user.id:
+                await websocket.send_text('{"error": "Invalid sender_id"}')
+                continue
+
+            msg = crud.create_direct_message(db, sender_id=user_id, receiver_id=other_user_id, content=data["content"])
+            broadcast_data = schemas.DirectMessage.from_orm(msg).model_dump_json()
+            await manager.broadcast(broadcast_data, room)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, room)
+    except Exception:
+        manager.disconnect(websocket, room)
+
+
 @router.websocket("/ws/{case_id}")
 async def websocket_endpoint(
     websocket: WebSocket,

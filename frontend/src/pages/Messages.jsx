@@ -1,7 +1,6 @@
-"use client"
-
 import { useState, useEffect, useRef } from "react"
 import MainLayout from "@/components/layout/MainLayout"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -19,26 +18,28 @@ import {
 } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { 
-  Send, 
-  Smartphone, 
-  FilePlus, 
-  X, 
-  Search, 
-  MoreVertical, 
-  Loader2, 
-  Calendar as CalendarIcon, 
-  FileText, 
-  CheckCircle2, 
+import {
+  Send,
+  Smartphone,
+  FilePlus,
+  X,
+  Search,
+  MoreVertical,
+  Loader2,
+  Calendar as CalendarIcon,
+  FileText,
+  CheckCircle2,
   Upload,
   FileClock,
   FileSearch,
   FileUp,
-  Download // <-- (NEW) Import Download Icon
+  Download,
+  AlertCircle,
+  Briefcase,
 } from "lucide-react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { format } from "date-fns"
-import { Toaster, toast } from "sonner" 
+import { toast } from "sonner"
 import { API_BASE_URL, CLIENT_BASE_URL, getWsBaseUrl, apiFetch } from "@/lib/api"
 import { getStoredUser, fetchCurrentUser } from "@/lib/auth"
 import {
@@ -87,7 +88,7 @@ const FileStatusIcon = ({ status }) => {
       return <FileUp className="h-5 w-5 text-blue-500 flex-shrink-0" />;
     case 'required':
     default:
-      return <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />;
+      return <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />;
   }
 };
 
@@ -100,7 +101,7 @@ const FileStatusBadge = ({ status }) => {
       return <Badge variant="secondary" className="bg-green-100 text-green-700">Reviewed</Badge>;
     case 'required':
     default:
-      return <Badge variant="outline" className="text-gray-600">Required</Badge>;
+      return <Badge variant="outline" className="text-muted-foreground">Required</Badge>;
   }
 }
 
@@ -198,16 +199,16 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
     return (
       <div className="flex justify-start">
         <div className="max-w-[75%] w-full">
-          <Card className="shadow-md bg-white border-gray-300 rounded-xl rounded-bl-sm">
+          <Card className="shadow-md bg-card border-border rounded-xl rounded-bl-sm">
             <CardHeader className="p-4 flex flex-row items-center gap-3 space-y-0">
-              <div className="p-2 bg-gray-100 rounded-full">
-                <FileSearch className="h-6 w-6 text-gray-700" />
+              <div className="p-2 bg-muted rounded-full">
+                <FileSearch className="h-6 w-6 text-foreground" />
               </div>
               <div>
-                <CardTitle className="text-base text-gray-800">
+                <CardTitle className="text-base text-foreground">
                   {getDocumentRequestTitle("admin")}
                 </CardTitle>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   {uploadedCount} of {totalCount} uploaded ({itemLabel}).
                 </p>
               </div>
@@ -215,26 +216,26 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
             
             <CardContent className="px-4 pb-4 pt-0 space-y-4">
               {message.content && (
-                <div className="border-l-4 border-gray-200 pl-3 py-1">
-                  <p className="text-sm italic text-gray-600">"{message.content}"</p>
+                <div className="border-l-4 border-border pl-3 py-1">
+                  <p className="text-sm italic text-muted-foreground">"{message.content}"</p>
                 </div>
               )}
               
               {deadline && (
-                <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                <div className="flex items-center gap-2 text-sm font-medium text-destructive">
                   <CalendarIcon className="h-4 w-4" />
                   Deadline: {format(new Date(deadline), 'MMM d, yyyy h:mm a')}
                 </div>
               )}
 
               <div className="space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase">Document Status</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase">Document Status</p>
                 <ul className="space-y-2">
                   {requested_documents.map((doc) => (
                     <li key={doc.id} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <FileStatusIcon status={doc.status} />
-                        <span className="font-medium text-gray-700">{doc.name}</span>
+                        <span className="font-medium text-foreground">{doc.name}</span>
                       </div>
                       <FileStatusBadge status={doc.status} />
                     </li>
@@ -326,22 +327,22 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
           <CardContent className="px-4 pb-4 pt-0 space-y-4">
             {message.content && (
               <div className="border-l-4 border-blue-300 pl-3 py-1">
-                <p className="text-sm italic text-gray-700">"{message.content}"</p>
+                <p className="text-sm italic text-foreground">"{message.content}"</p>
               </div>
             )}
             
             {deadline && (
-              <div className="flex items-center gap-2 text-sm font-medium text-red-600 p-2 bg-red-50 rounded-md">
+              <div className="flex items-center gap-2 text-sm font-medium text-destructive p-2 bg-destructive/10 rounded-md">
                 <CalendarIcon className="h-4 w-4" />
                 Please submit by: {format(new Date(deadline), 'MMM d, yyyy h:mm a')}
               </div>
             )}
 
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase">Required Items</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase">Required Items</p>
               <ul className="list-disc list-inside space-y-1 pl-1">
                 {requested_documents.map((doc) => (
-                  <li key={doc.id} className="text-sm font-medium text-gray-700">
+                  <li key={doc.id} className="text-sm font-medium text-foreground">
                     {doc.name}
                   </li>
                 ))}
@@ -366,11 +367,47 @@ const DocumentRequestMessage = ({ message, conversation, isLawyer, onReviewClick
 };
 
 // =========================================================================
+// --- SIDEBAR CONVERSATION BUTTON ---
+// =========================================================================
+function ConvButton({ conv, selected, onSelect, subtitle }) {
+  const isSelected = selected?.id === conv.id && selected?.type === conv.type
+  const initials = (conv.participantName || "?").split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+  const isDm = conv.type === "dm"
+  return (
+    <button
+      onClick={() => onSelect(conv)}
+      className={`w-full px-4 py-2.5 flex items-center gap-3 transition-all border-l-2 ${
+        isSelected ? "bg-primary/5 border-primary" : "hover:bg-muted/50 border-transparent"
+      }`}
+    >
+      <div className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center ${
+        isDm ? "bg-primary/10" : "bg-muted"
+      }`}>
+        {isDm
+          ? <span className="text-xs font-semibold text-primary">{initials}</span>
+          : <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+        }
+      </div>
+      <div className="flex-1 text-left overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-medium text-sm truncate">{conv.participantName}</p>
+          {conv.unreadCount > 0 && (
+            <Badge className="h-4 min-w-4 px-1 text-[10px] font-bold shrink-0">{conv.unreadCount}</Badge>
+          )}
+        </div>
+        {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
+      </div>
+    </button>
+  )
+}
+
+// =========================================================================
 // --- MAIN MESSAGES COMPONENT ---
 // =========================================================================
 export default function Messages() {
   // --- STATE VARIABLES ---
   const [conversations, setConversations] = useState([])
+  const [dmConversations, setDmConversations] = useState([])
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState("")
@@ -408,34 +445,46 @@ export default function Messages() {
     })
   }, [user, navigate])
 
-  // [.. Fetch Conversations (Cases) ..]
+  // [.. Fetch Conversations (Cases + DMs) ..]
   useEffect(() => {
     if (!user) return
 
-    const fetchConversations = async () => {
+    const fetchAll = async () => {
       setIsLoading(true)
       setError(null)
       try {
-        const res = await apiFetch("/cases")
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ detail: "Network error" }))
-          throw new Error(errorData.detail || `HTTP error! Status: ${res.status}`)
+        const [casesRes, dmRes] = await Promise.all([
+          apiFetch("/cases"),
+          apiFetch("/direct-messages"),
+        ])
+
+        if (!casesRes.ok) {
+          const e = await casesRes.json().catch(() => ({ detail: "Network error" }))
+          throw new Error(e.detail || `HTTP error! Status: ${casesRes.status}`)
         }
-        const cases = await res.json()
-        if (!Array.isArray(cases)) {
-          console.error("API did not return an array:", cases)
-          throw new Error("Invalid data format received from server.")
-        }
-          const formattedConvos = cases.map((c) => {
-          const participantName = getConversationParticipantName(c, user);
-          return {
-            id: c.id,
-            participantName: participantName || c.title || "Unknown Participant",
-            unreadCount: c.unread_count || 0,
-            _caseData: c,
+        const cases = await casesRes.json()
+        if (!Array.isArray(cases)) throw new Error("Invalid data format received from server.")
+        setConversations(cases.map((c) => ({
+          id: c.id,
+          type: "case",
+          participantName: c.title || "Untitled Case",
+          unreadCount: c.unread_count || 0,
+          _caseData: c,
+        })))
+
+        if (dmRes.ok) {
+          const dms = await dmRes.json()
+          if (Array.isArray(dms)) {
+            setDmConversations(dms.map((d) => ({
+              id: d.user.id,
+              type: "dm",
+              participantName: d.user.name || d.user.email,
+              unreadCount: d.unread_count || 0,
+              _user: d.user,
+              _lastMessage: d.last_message,
+            })))
           }
-        })
-        setConversations(formattedConvos)
+        }
       } catch (err) {
         console.error("Failed to fetch conversations:", err)
         setError(err.message)
@@ -443,7 +492,7 @@ export default function Messages() {
         setIsLoading(false)
       }
     }
-    fetchConversations()
+    fetchAll()
   }, [user])
 
   // [.. Auto-select chat from URL ..]
@@ -459,19 +508,26 @@ export default function Messages() {
   }, [conversations, searchParams, setSearchParams])
 
   // [.. Fetch Messages & Connect WebSocket ..]
-  const fetchMessages = async (caseId) => {
+  const fetchMessages = async (conv) => {
     try {
-      await apiFetch(`/cases/${caseId}/read`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reader_id: user.id }),
-      })
-      setConversations((prevConvos) => prevConvos.map((c) => (c.id === caseId ? { ...c, unreadCount: 0 } : c)))
-      const res = await apiFetch(`/cases/${caseId}/messages`)
-      if (!res.ok) throw new Error("Failed to fetch messages")
-      const data = await res.json()
-      if (Array.isArray(data)) {
-        setMessages(data.map((msg) => ({ ...msg, id: msg.id }))) 
+      if (conv.type === "dm") {
+        await apiFetch(`/direct-messages/${conv.id}/read`, { method: "POST" })
+        setDmConversations((prev) => prev.map((d) => d.id === conv.id ? { ...d, unreadCount: 0 } : d))
+        const res = await apiFetch(`/direct-messages/${conv.id}`)
+        if (!res.ok) throw new Error("Failed to fetch DMs")
+        const data = await res.json()
+        if (Array.isArray(data)) setMessages(data)
+      } else {
+        await apiFetch(`/cases/${conv.id}/read`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reader_id: user.id }),
+        })
+        setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, unreadCount: 0 } : c))
+        const res = await apiFetch(`/cases/${conv.id}/messages`)
+        if (!res.ok) throw new Error("Failed to fetch messages")
+        const data = await res.json()
+        if (Array.isArray(data)) setMessages(data.map((msg) => ({ ...msg, id: msg.id })))
       }
       scrollToBottom()
     } catch (err) {
@@ -482,34 +538,25 @@ export default function Messages() {
   useEffect(() => {
     if (selectedConversation && user) {
       const openConversation = async () => {
-        await fetchMessages(selectedConversation.id)
-        if (webSocketRef.current) {
-          webSocketRef.current.close()
-        }
-        const ws = new WebSocket(`${getWsBaseUrl()}/ws/${selectedConversation.id}`)
+        setMessages([])
+        await fetchMessages(selectedConversation)
+        if (webSocketRef.current) webSocketRef.current.close()
+        const wsUrl = selectedConversation.type === "dm"
+          ? `${getWsBaseUrl()}/ws/dm/${selectedConversation.id}`
+          : `${getWsBaseUrl()}/ws/${selectedConversation.id}`
+        const ws = new WebSocket(wsUrl)
         webSocketRef.current = ws
-        ws.onopen = () => console.log("WebSocket connected")
-        ws.onclose = () => console.log("WebSocket disconnected")
         ws.onmessage = (event) => {
           try {
-            const newMessage = JSON.parse(event.data)
-            setMessages((prevMessages) => {
-              if (prevMessages.some((msg) => msg.id === newMessage.id)) {
-                return prevMessages
-              }
-              return [...prevMessages, { ...newMessage, id: newMessage.id }]
-            })
+            const msg = JSON.parse(event.data)
+            setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg])
           } catch (e) {
             console.error("Failed to parse ws message", e)
           }
         }
       }
       openConversation()
-      return () => {
-        if (webSocketRef.current) {
-          webSocketRef.current.close()
-        }
-      }
+      return () => { webSocketRef.current?.close() }
     }
   }, [selectedConversation, user])
 
@@ -538,6 +585,21 @@ export default function Messages() {
   const formatTime = (timestamp) => {
     const date = new Date(timestamp)
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  }
+
+  const formatDateSeparator = (timestamp) => {
+    const date = new Date(timestamp)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    if (date.toDateString() === today.toDateString()) return "Today"
+    if (date.toDateString() === yesterday.toDateString()) return "Yesterday"
+    return date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })
+  }
+
+  const isSameDay = (a, b) => {
+    const da = new Date(a), db = new Date(b)
+    return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate()
   }
 
   const scrollToBottom = () => {
@@ -626,9 +688,9 @@ export default function Messages() {
   // (REMOVED) handleMarkAsReviewed function
   // --- (END NEW) ---
 
-  const filteredConversations = conversations.filter((conv) =>
-    conv.participantName.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+  const q = searchQuery.toLowerCase()
+  const filteredCases = conversations.filter((c) => c.participantName.toLowerCase().includes(q))
+  const filteredDms = dmConversations.filter((d) => d.participantName.toLowerCase().includes(q))
 
   // --- RENDER ---
   if (!user) {
@@ -639,13 +701,23 @@ export default function Messages() {
     )
   }
 
+  const isStaff = STAFF_ROLES.has(user?.role)
+
   return (
     <MainLayout>
-      <div className="flex gap-4 h-[calc(100vh-8rem)] max-h-[900px]">
-        {/* Left Sidebar: Conversations */}
-        <Card className="w-[380px] flex flex-col shadow-lg border-border/40">
-          <CardHeader className="pb-4 space-y-4">
-              <CardTitle className="text-2xl font-semibold">Case Messages</CardTitle>
+      <div className="p-6 space-y-5">
+
+        {/* Page header */}
+        <div>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Messages</h1>
+        </div>
+
+        {/* Split panel in a card */}
+        <Card className="border-border shadow-none overflow-hidden" style={{ height: "calc(100vh - 13rem)" }}>
+        <div className="flex h-full">
+        {/* Left: Conversations */}
+        <div className="w-72 border-r bg-card flex flex-col shrink-0">
+          <div className="px-4 py-3 border-b">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -655,90 +727,77 @@ export default function Messages() {
                 className="pl-9 bg-muted/50 border-0 focus-visible:ring-1"
               />
             </div>
-          </CardHeader>
-          <CardContent className="p-0 flex-1 overflow-hidden">
-            <ScrollArea className="h-full">
+          </div>
+          <ScrollArea className="flex-1">
               {isLoading && (
-                <div className="p-8 text-center">
-                  <div className="animate-pulse space-y-4">
-                    <div className="h-16 bg-muted rounded-lg"></div>
-                    <div className="h-16 bg-muted rounded-lg"></div>
-                    <div className="h-16 bg-muted rounded-lg"></div>
-                  </div>
+                <div className="p-4 space-y-2">
+                  {[...Array(4)].map((_, i) => <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />)}
                 </div>
               )}
               {error && (
-                <div className="p-4 m-4 bg-destructive/10 text-destructive rounded-lg text-sm">Error: {error}</div>
+                <Alert variant="destructive" className="m-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
               )}
               {!isLoading && !error && (
                 <div>
-                  {filteredConversations.length === 0 && (
-                    <p className="p-8 text-center text-sm text-muted-foreground">
-                      {searchQuery ? "No results found" : "No conversations yet"}
-                    </p>
+                  {/* Direct Messages section */}
+                  <div className="px-4 pt-3 pb-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Direct Messages</p>
+                  </div>
+                  {filteredDms.length === 0 && (
+                    <p className="px-4 py-2 text-xs text-muted-foreground">No direct messages</p>
                   )}
-                  {filteredConversations.map((conv) => (
-                    <button
-                      key={conv.id}
-                      onClick={() => setSelectedConversation(conv)}
-                      className={`w-full px-4 py-3 flex items-center gap-3 transition-all border-l-4 ${
-                        selectedConversation?.id === conv.id
-                          ? "bg-primary/5 border-primary"
-                          : "hover:bg-muted/50 border-transparent"
-                      }`}
-                    >
-                      <Avatar className="h-11 w-11 border-2 border-background shadow-sm">
-                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold">
-                          {getInitials(conv.participantName)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 text-left overflow-hidden">
-                        <div className="flex items-center justify-between gap-2">
-                          <h3 className="font-semibold text-sm truncate">{conv.participantName}</h3>
-                          {conv.unreadCount > 0 && (
-                            <Badge
-                              variant="default"
-                              className="h-5 min-w-5 px-1.5 flex items-center justify-center text-xs font-bold shrink-0"
-                            >
-                              {conv.unreadCount}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {conv._caseData.title || "Case conversation"}
-                        </p>
-                      </div>
-                    </button>
+                  {filteredDms.map((conv) => (
+                    <ConvButton key={`dm-${conv.id}`} conv={conv} selected={selectedConversation} onSelect={setSelectedConversation} subtitle={conv._user?.email || ""} />
+                  ))}
+
+                  {/* Case conversations section */}
+                  <div className="px-4 pt-4 pb-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Cases</p>
+                  </div>
+                  {filteredCases.length === 0 && (
+                    <p className="px-4 py-2 text-xs text-muted-foreground">No case conversations</p>
+                  )}
+                  {filteredCases.map((conv) => (
+                    <ConvButton key={`case-${conv.id}`} conv={conv} selected={selectedConversation} onSelect={setSelectedConversation} subtitle={conv._caseData?.clients?.[0]?.name || ""} />
                   ))}
                 </div>
               )}
             </ScrollArea>
-          </CardContent>
-        </Card>
+          </div>
 
         {/* Right: Chat Area */}
-        <Card className="flex-1 flex flex-col shadow-lg border-border/40 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {selectedConversation ? (
             <>
               {/* Chat Header */}
-              <CardHeader className="border-b border-border/50 bg-muted/30 backdrop-blur-sm py-4">
+              <div className="border-b border-border/50 bg-card py-4 px-6 shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10 border-2 border-background shadow-sm">
-                      <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold">
-                        {getInitials(selectedConversation.participantName)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
+                      selectedConversation.type === "dm" ? "bg-primary/10" : "bg-muted"
+                    }`}>
+                      {selectedConversation.type === "dm"
+                        ? <span className="text-sm font-semibold text-primary">{getInitials(selectedConversation.participantName)}</span>
+                        : <Briefcase className="h-4 w-4 text-muted-foreground" />
+                      }
+                    </div>
                     <div>
                       <h3 className="font-semibold text-base">{selectedConversation.participantName}</h3>
-                          {STAFF_ROLES.has(user.role) && (
+                      {selectedConversation.type === "case" && STAFF_ROLES.has(user.role) && (
                         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                           <Smartphone className="h-3 w-3" />
-                          Case Number: {selectedConversation._caseData.case_number}
-                          {user.role === "admin" && selectedConversation?._caseData?.case_serial
-                            ? ` | Case Serial: ${selectedConversation._caseData.case_serial}`
-                            : ""}
+                          {(() => {
+                            const client = selectedConversation._caseData?.clients?.[0];
+                            const phone = client?.client_profile?.phone;
+                            return phone || selectedConversation._caseData?.lawbase_case_number || "No phone on file";
+                          })()}
                         </p>
+                      )}
+                      {selectedConversation.type === "dm" && (
+                        <p className="text-xs text-muted-foreground">{selectedConversation._user?.email || "Direct message"}</p>
                       )}
                     </div>
                   </div>
@@ -746,22 +805,16 @@ export default function Messages() {
                     <MoreVertical className="h-5 w-5" />
                   </Button>
                 </div>
-              </CardHeader>
+              </div>
 
               {/* Messages Area */}
-              <CardContent className="flex-1 p-6 overflow-hidden bg-muted/10">
-                <ScrollArea className="h-full pr-4">
+              <div className="flex-1 overflow-hidden bg-muted/10">
+                <ScrollArea className="h-full p-6 pr-2">
                   <div className="space-y-4">
-                    {messages.map((msg) => {
-                      // Debug log to check message structure
-                      console.log(`Message ID: ${msg.id}`, { 
-                          type: msg.message_type, 
-                          hasDocRequestObj: !!msg.document_request 
-                      });
-
-
+                    {messages.map((msg, idx) => {
                       const isOwn = msg.sender_id === user.id
                       const senderName = isOwn ? "You" : msg.sender_user?.name || selectedConversation.participantName
+                      const showDateSep = idx === 0 || !isSameDay(messages[idx - 1].timestamp, msg.timestamp)
                       
                       // --- ROBUST CHECK for Document Request ---
                       const isDocumentRequest = 
@@ -782,9 +835,17 @@ export default function Messages() {
                         (totalRequested > 0 && uploadedCount === totalRequested);
 
                       return (
-                        <div key={msg.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
+                        <div key={msg.id}>
+                          {showDateSep && (
+                            <div className="flex items-center gap-3 my-4">
+                              <div className="flex-1 h-px bg-muted" />
+                              <span className="text-[11px] font-medium text-muted-foreground px-2">{formatDateSeparator(msg.timestamp)}</span>
+                              <div className="flex-1 h-px bg-muted" />
+                            </div>
+                          )}
+                        <div className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
                           <div className={`flex gap-2.5 max-w-[75%] ${isOwn ? "flex-row-reverse" : ""}`}>
-                            <Avatar className="h-8 w-8 mt-0.5 shadow-sm border border-background">
+                            <Avatar className="h-8 w-8 mt-0.5 shadow-sm border border-background flex-shrink-0">
                               <AvatarFallback
                                 className={
                                   isOwn
@@ -796,11 +857,12 @@ export default function Messages() {
                               </AvatarFallback>
                             </Avatar>
                             <div className="space-y-1">
+                              <p className={`text-[11px] font-medium text-muted-foreground px-1 ${isOwn ? "text-right" : "text-left"}`}>{senderName}</p>
                               <div
-                                className={`rounded-2xl px-4 py-2.5 shadow-sm ${
+                                className={`rounded-2xl px-4 py-2.5 ${
                                   isOwn
                                     ? "bg-primary text-primary-foreground rounded-br-sm"
-                                    : "bg-card border border-border/50 text-foreground rounded-bl-sm"
+                                    : "bg-card border border-border text-foreground rounded-bl-sm shadow-sm"
                                 }`}
                               >
                                 {isDocumentRequest && (
@@ -855,28 +917,29 @@ export default function Messages() {
                                 )}
                               </div>
                               <div className={`flex items-center gap-1.5 px-1 ${isOwn ? "flex-row-reverse" : ""}`}>
-                                <p className="text-xs text-muted-foreground">{formatTime(msg.timestamp)}</p>
-                          {msg.channel === "sms" && (
-                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <p className="text-[11px] text-muted-foreground">{formatTime(msg.timestamp)}</p>
+                                {msg.channel === "sms" && (
+                                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                                     <Smartphone className="h-3 w-3" />
-                                    <span className="text-[10px]">SMS</span>
+                                    <span>SMS</span>
                                   </div>
                                 )}
                               </div>
                             </div>
                           </div>
                         </div>
+                        </div>
                       )
                     })}
                     <div ref={messagesEndRef} />
                   </div>
                 </ScrollArea>
-              </CardContent>
+              </div>
 
               {/* Input Area */}
               <div className="border-t border-border/50 bg-card p-4">
                 <div className="flex gap-2 items-end">
-                  {STAFF_ROLES.has(user.role) && (
+                  {STAFF_ROLES.has(user.role) && selectedConversation?.type === "case" && (
                     <Button
                       onClick={() => setIsRequestingDocs(true)}
                       variant="outline"
@@ -919,7 +982,10 @@ export default function Messages() {
               </p>
             </div>
           )}
+        </div>
+        </div>
         </Card>
+
       </div>
 
       {/* Document Request Modal */}
@@ -1083,7 +1149,7 @@ export default function Messages() {
                       asChild // 'asChild' lets the <a> tag handle navigation
                       variant="outline" 
                       size="sm"
-                      className="bg-white"
+                      className="bg-card"
                     >
                       {/* This link is constructed from your API base URL and the file_path from the DB.
                         It opens the file in a new tab.
@@ -1116,9 +1182,6 @@ export default function Messages() {
         </DialogContent>
       </Dialog>
       {/* --- (END NEW) --- */}
-      
-      {/* Sonner component for notifications */}
-      <Toaster richColors position="bottom-right" /> 
     </MainLayout>
   )
 }

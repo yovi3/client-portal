@@ -7,7 +7,7 @@ from ..config import get_settings
 
 settings = get_settings()
 
-PERSONNEL_ROLES = {"lawyer", "accountant", "paralegal", "legal assistant", "admin"}
+PERSONNEL_ROLES = {"lawyer", "accounting", "other", "case manager", "admin"}
 OAUTH_STATE_COOKIE = "oauth_state"
 OAUTH_NONCE_COOKIE = "oauth_nonce"
 
