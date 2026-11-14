@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { useUser } from "@/lib/UserContext";
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({ email: "", password: "", remember: false });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { updateUser } = useUser();
   const navigate = useNavigate();
 
   const validate = () => {
@@ -37,7 +39,9 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        localStorage.setItem("user", JSON.stringify(data));
+        // Tell the whole app who signed in (not just localStorage), so the
+        // sidebar and pages show the right view without a page reload.
+        updateUser(data);
         toast.success("Signed in successfully");
         setTimeout(() => navigate("/dashboard"), 800);
       } else {

@@ -503,6 +503,14 @@ export default function Messages() {
     fetchAll()
   }, [user])
 
+  // Switching between Cases and Team chat closes a conversation from the other list.
+  const viewParam = searchParams.get("view")
+  useEffect(() => {
+    if (!selectedConversation || !STAFF_ROLES.has(user?.role)) return
+    const wantType = viewParam === "team" ? "dm" : "case"
+    if (selectedConversation.type !== wantType) setSelectedConversation(null)
+  }, [viewParam]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // [.. Auto-select chat from URL ..]
   useEffect(() => {
     const urlCaseId = searchParams.get("case_id")
@@ -510,7 +518,9 @@ export default function Messages() {
       const convoToSelect = conversations.find((c) => c.id.toString() === urlCaseId)
       if (convoToSelect) {
         setSelectedConversation(convoToSelect)
-        setSearchParams({}, { replace: true })
+        const next = new URLSearchParams(searchParams)
+        next.delete("case_id")
+        setSearchParams(next, { replace: true })
       }
     }
   }, [conversations, searchParams, setSearchParams])
@@ -725,6 +735,7 @@ export default function Messages() {
   }
 
   const isStaff = STAFF_ROLES.has(user?.role)
+  const view = isStaff && searchParams.get("view") === "team" ? "team" : "cases"
   const textingTarget = isStaff && selectedConversation?.type === "case"
     ? getTextingTarget(selectedConversation._caseData) : null
   const composerPlaceholder = !selectedConversation ? "" :
@@ -745,7 +756,16 @@ export default function Messages() {
 
         {/* Page header */}
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Messages</h1>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">
+            {!isStaff ? "Messages" : view === "team" ? "Team chat" : "Cases"}
+          </h1>
+          {isStaff && (
+            <p className="text-sm text-muted-foreground">
+              {view === "team"
+                ? "Internal messages between staff. Nothing here is ever texted to a client."
+                : "Conversations with clients on LawBase cases. Your messages are also sent by text."}
+            </p>
+          )}
         </div>
 
         {/* Split panel in a card */}
@@ -757,7 +777,7 @@ export default function Messages() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search conversations..."
+                placeholder={view === "team" ? "Search team members" : "Search by client or case"}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 bg-muted/50 border-0 focus-visible:ring-1"
@@ -778,6 +798,7 @@ export default function Messages() {
               )}
               {!isLoading && !error && (
                 <div>
+                  {isStaff && view === "team" && (<>
                   {/* Direct Messages section */}
                   <div className="px-4 pt-3 pb-1">
                     <h2 className="text-xs font-semibold text-muted-foreground">Direct messages</h2>
@@ -789,6 +810,8 @@ export default function Messages() {
                     <ConvButton key={`dm-${conv.id}`} conv={conv} selected={selectedConversation} onSelect={setSelectedConversation} subtitle={conv._user?.email || ""} />
                   ))}
 
+                  </>)}
+                  {(!isStaff || view === "cases") && (<>
                   {/* Case conversations section */}
                   <div className="px-4 pt-4 pb-1">
                     <h2 className="text-xs font-semibold text-muted-foreground">Cases</h2>
@@ -799,6 +822,7 @@ export default function Messages() {
                   {filteredCases.map((conv) => (
                     <ConvButton key={`case-${conv.id}`} conv={conv} selected={selectedConversation} onSelect={setSelectedConversation} subtitle={isStaff ? conv.caseTitle : ""} />
                   ))}
+                  </>)}
                 </div>
               )}
             </ScrollArea>
@@ -1058,7 +1082,9 @@ export default function Messages() {
               </div>
               <h3 className="text-xl font-semibold mb-2">Select a conversation</h3>
               <p className="text-muted-foreground text-sm max-w-sm">
-                {isLoading ? "Loading case conversations..." : "Choose a case conversation from the list to start messaging"}
+                {isLoading ? "Loading conversations…"
+                  : view === "team" ? "Choose a colleague from the list to open your conversation."
+                  : "Choose a client from the list to open their conversation."}
               </p>
             </div>
           )}

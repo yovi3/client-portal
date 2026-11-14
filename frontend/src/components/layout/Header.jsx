@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { Scale, Bell, LogOut } from "lucide-react";
+import { Scale, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -11,28 +11,12 @@ import { useUser } from "@/lib/UserContext";
 import { usePolling } from "@/lib/PollingContext";
 
 export default function Header({ mobileMenuTrigger }) {
-  const { user, logout } = useUser();
+  const { user } = useUser();
   const { notifications, unreadCount, refetch } = usePolling();
   
   const navigate = useNavigate();
 
   const hasUnread = notifications.length > 0 || unreadCount > 0;
-
-  const handleLogout = async () => {
-    await logout();
-    navigate("/login");
-  };
-
-  const getInitials = (name) => {
-    if (!name || typeof name !== "string") return "U";
-    const parts = name
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    if (parts.length === 0) return "U";
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
 
   const formatTimeAgo = (timestamp) => {
     const seconds = Math.floor((new Date() - new Date(timestamp)) / 1000);
@@ -60,7 +44,7 @@ export default function Header({ mobileMenuTrigger }) {
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
             <Scale className="h-5 w-5 text-primary" />
-            <span className="text-lg font-semibold text-foreground">Injury Case Portal</span>
+            <span className="text-lg font-semibold text-ink">DSS Messaging</span>
           </div>
         </div>
       </header>
@@ -68,21 +52,17 @@ export default function Header({ mobileMenuTrigger }) {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-card">
-      <div className="flex items-center justify-between gap-4 px-4 py-3">
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur">
+      <div className="flex h-14 items-center justify-between gap-4 px-4 md:px-6">
         <div className="flex items-center gap-2">
           {mobileMenuTrigger}
-          <button
-            type="button"
-            onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-          >
-            <Scale className="h-5 w-5 text-primary" />
-            <span className="text-lg font-semibold text-foreground">Injury Case Portal</span>
-          </button>
+          <span className="md:hidden flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded bg-brand text-[10px] font-bold text-white">DSS</span>
+            <span className="font-semibold text-ink">Messaging</span>
+          </span>
         </div>
 
-        <div className="mr-1 flex items-center gap-2">
+        <div className="flex items-center gap-2">
           {/* Notifications */}
           <Popover>
             <PopoverTrigger asChild>
@@ -131,37 +111,6 @@ export default function Header({ mobileMenuTrigger }) {
             </PopoverContent>
           </Popover>
 
-          {/* User menu */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-accent"
-              >
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold leading-none text-primary-foreground">
-                  {getInitials(user.name)}
-                </span>
-                <span className="hidden md:inline text-sm leading-none font-medium text-foreground">
-                  {user.name}
-                </span>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent side="bottom" align="end" className="w-48">
-              <div className="flex flex-col space-y-2">
-                <div className="border-b pb-2">
-                  <p className="font-medium">{user.name}</p>
-                  <p className="text-xs text-muted-foreground">{user.email}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  className="justify-start text-destructive"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="h-4 w-4 mr-2" /> Logout
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
         </div>
       </div>
     </header>

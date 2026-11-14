@@ -7,6 +7,7 @@ import Cases from "@/pages/Cases";
 import Clients from "@/pages/Clients";
 import Documents from "@/pages/Documents";
 import Messages from "@/pages/Messages";
+import Leads from "@/pages/Leads";
 import CaseInbox from "@/pages/CaseInbox";
 import AzureCallback from './pages/AzureCallback'
 import SmsLandingPage from './pages/SmsLandingPage'
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/contacts" element={<Navigate to="/clients" replace />} />
         <Route path="/documents" element={<RequireAuth><Documents /></RequireAuth>} />
         <Route path="/messages" element={<RequireAuth><Messages /></RequireAuth>} />
+        <Route path="/leads" element={<RequireRole allowedRoles={personnelRoles}><Leads /></RequireRole>} />
         <Route path="/case-inbox" element={<RequireRole allowedRoles={personnelRoles}><CaseInbox /></RequireRole>} />
         <Route path="/auth/callback" element={<AzureCallback />} />
         <Route path="/requests/:token" element={<SmsLandingPage />} />
