@@ -486,3 +486,49 @@ class InviteAccept(BaseModel):
     zip_code: str
     country: str
     password: str
+
+
+# ========================================================
+# Leads (LeadBase leads; typed in by staff until the robo bridge fills them)
+# ========================================================
+
+class StaffSummary(BaseModel):
+    id: int
+    name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LeadCreate(BaseModel):
+    lead_number: str = Field(min_length=1, max_length=50)
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+    phone: Optional[str] = Field(default=None, max_length=40)
+    assigned_user_id: Optional[int] = None
+
+
+class LeadUpdate(BaseModel):
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+    phone: Optional[str] = Field(default=None, max_length=40)
+    assigned_user_id: Optional[int] = None
+    status: Optional[str] = None
+
+
+class Lead(BaseModel):
+    id: int
+    lead_number: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    status: str
+    assigned_user: Optional[StaffSummary] = None
+    created_at: Optional[datetime] = None
+    conversation_id: Optional[int] = None
+    # Set when the phone number already belongs to a conversation about something else.
+    phone_note: Optional[str] = None
+
+    class Config:
+        from_attributes = True
