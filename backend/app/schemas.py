@@ -643,6 +643,9 @@ class RequestFileOut(BaseModel):
     content_type: str
     size_bytes: int
     uploaded_at: Optional[datetime] = None
+    # For sent documents: how often the person downloaded this file.
+    download_count: int = 0
+    last_downloaded_at: Optional[datetime] = None
 
 
 class FileRequestItemOut(BaseModel):
@@ -660,8 +663,9 @@ class FileRequestEventOut(BaseModel):
 
 
 class FileRequestOut(BaseModel):
-    """What staff see: the request, its state, and its full trail."""
+    """What staff see: the request (or sent documents), its state, and its full trail."""
     id: int
+    direction: str = "request"  # request: they upload; send: they download
     state: str  # waiting, partly, complete, expired, revoked
     link: str
     note: Optional[str] = None
@@ -676,7 +680,15 @@ class FileRequestOut(BaseModel):
     first_opened_at: Optional[datetime] = None
     last_opened_at: Optional[datetime] = None
     items: List[FileRequestItemOut] = []
+    files: List[RequestFileOut] = []  # sent documents
     events: List[FileRequestEventOut] = []
+
+
+class PublicSentFile(BaseModel):
+    id: int
+    name: str
+    size_bytes: int
+    content_type: str
 
 
 class PublicFileRequestItem(BaseModel):
@@ -694,4 +706,6 @@ class PublicFileRequest(BaseModel):
     can_upload: bool
     expires_at: datetime
     max_file_mb: int
+    direction: str = "request"
     items: List[PublicFileRequestItem] = []
+    files: List[PublicSentFile] = []

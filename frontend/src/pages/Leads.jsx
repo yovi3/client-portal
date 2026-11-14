@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertCircle, FilePlus, Filter, List, Loader2, MessagesSquare, Pencil, Plus, Search, Smartphone } from "lucide-react";
+import { AlertCircle, FilePlus, FileUp, Filter, List, Loader2, MessagesSquare, Pencil, Plus, Search, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import MainLayout from "@/components/layout/MainLayout";
 import ConversationThread from "@/components/conversation/ConversationThread";
 import FileRequestsPanel from "@/components/conversation/FileRequestsPanel";
 import RequestDocumentsDialog from "@/components/conversation/RequestDocumentsDialog";
+import SendDocumentsDialog from "@/components/conversation/SendDocumentsDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +63,7 @@ export default function Leads() {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(undefined); // undefined = closed, null = adding, lead = editing
   const [requesting, setRequesting] = useState(false);
+  const [sending, setSending] = useState(false);
   const [activity, setActivity] = useState({}); // conversation id -> counter, bumps on news
 
   const loadLeads = useCallback(async () => {
@@ -211,7 +213,10 @@ export default function Leads() {
                     </div>
                     <div className="flex gap-2">
                       {selected.conversation_id && (
-                        <Button size="sm" onClick={() => setRequesting(true)}><FilePlus className="h-4 w-4" /> Request documents</Button>
+                        <>
+                          <Button size="sm" onClick={() => setRequesting(true)}><FilePlus className="h-4 w-4" /> Request documents</Button>
+                          <Button size="sm" variant="outline" onClick={() => setSending(true)}><FileUp className="h-4 w-4" /> Send documents</Button>
+                        </>
                       )}
                       <Button variant="outline" size="sm" onClick={() => setEditing(selected)}><Pencil className="h-4 w-4" /> Edit lead</Button>
                     </div>
@@ -254,6 +259,13 @@ export default function Leads() {
         conversationId={selected?.conversation_id}
         contactName={selected?.first_name || selected?.name}
         onClose={() => setRequesting(false)}
+        onSent={() => setActivity((prev) => ({ ...prev, [selected.conversation_id]: (prev[selected.conversation_id] || 0) + 1 }))}
+      />
+      <SendDocumentsDialog
+        open={sending}
+        conversationId={selected?.conversation_id}
+        contactName={selected?.first_name || selected?.name}
+        onClose={() => setSending(false)}
         onSent={() => setActivity((prev) => ({ ...prev, [selected.conversation_id]: (prev[selected.conversation_id] || 0) + 1 }))}
       />
     </MainLayout>

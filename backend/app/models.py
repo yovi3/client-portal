@@ -328,6 +328,9 @@ class FileRequest(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     token = Column(String, unique=True, index=True, nullable=False)
+    # "request": the firm asks for documents (they upload). "send": the firm sends
+    # documents (they download). Same link, expiry and tracking either way.
+    direction = Column(String, nullable=False, default="request", server_default="request")
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
     lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=True, index=True)
@@ -391,6 +394,7 @@ class FileRequestEvent(Base):
     kind = Column(String, nullable=False)
     at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # staff member, when staff did it
+    file_id = Column(Integer, ForeignKey("request_files.id"), nullable=True)  # the file, for uploads and downloads
     detail = Column(String, nullable=True)  # file name, new expiry, browser, address
 
     request = relationship("FileRequest", back_populates="events")

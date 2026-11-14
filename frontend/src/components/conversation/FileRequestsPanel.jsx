@@ -20,6 +20,12 @@ const STATE = {
   expired: { label: "Link expired", tone: "text-muted-foreground" },
   revoked: { label: "Link turned off", tone: "text-muted-foreground" },
 };
+// Documents the firm sent: "complete" means every file was downloaded.
+const SEND_STATE = {
+  waiting: { label: "Sent, not downloaded yet", tone: "text-warning" },
+  partly: { label: "Partly downloaded", tone: "text-warning" },
+  complete: { label: "All downloaded", tone: "text-success" },
+};
 const EVENT_LABEL = {
   sent: "Sent",
   opened: "Opened",
@@ -27,7 +33,8 @@ const EVENT_LABEL = {
   opened_revoked: "Opened after it was turned off",
   uploaded: "Uploaded",
   completed: "Everything received",
-  downloaded: "Downloaded",
+  downloaded: "Downloaded by staff",
+  recipient_downloaded: "Downloaded by them",
   extended: "Extended",
   revoked: "Turned off",
 };
@@ -50,7 +57,7 @@ export default function FileRequestsPanel({ conversationId, refreshKey }) {
     <section className="border-b border-border bg-muted/30" aria-label="Document requests">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
         className="flex w-full items-center justify-between px-6 py-2.5 text-left text-sm font-medium hover:bg-muted/50">
-        <span>Document requests <span className="font-normal text-muted-foreground">({requests.length}{active ? `, ${active} waiting` : ""})</span></span>
+        <span>Documents <span className="font-normal text-muted-foreground">({requests.length}{active ? `, ${active} waiting` : ""})</span></span>
         {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
       </button>
       {open && (
@@ -64,8 +71,10 @@ export default function FileRequestsPanel({ conversationId, refreshKey }) {
 
 function RequestCard({ req, onChanged }) {
   const [showTrail, setShowTrail] = useState(false);
-  const state = STATE[req.state] || STATE.waiting;
+  const sent = req.direction === "send";
+  const state = (sent && SEND_STATE[req.state]) || STATE[req.state] || STATE.waiting;
   const received = req.items.filter((i) => i.received_at).length;
+  const downloadedFiles = req.files.filter((f) => f.download_count > 0).length;
   const live = req.state === "waiting" || req.state === "partly" || req.state === "complete";
 
   const act = async (path, body, done) => {
@@ -79,7 +88,10 @@ function RequestCard({ req, onChanged }) {
   return (
     <li className="rounded-lg border border-border bg-card p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className={`font-semibold ${state.tone}`}>{state.label}</p>
+        <p className="font-semibold">
+          <span className="mr-2 text-xs font-medium text-muted-foreground">{sent ? "Sent to them" : "Requested from them"}</span>
+          <span className={state.tone}>{state.label}</span>
+        </p>
         <div className="flex flex-wrap gap-1.5">
           {live && (
             <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => navigator.clipboard.writeText(req.link).then(() => toast.success("Link copied"))}>
@@ -108,11 +120,26 @@ function RequestCard({ req, onChanged }) {
         <dd>{when(req.created_at)}{req.created_by ? ` by ${req.created_by}` : ""}{req.sent_status === "failed" && <span className="text-destructive">. Text not delivered: {req.sent_error}</span>}</dd>
         <dt className="text-muted-foreground"><Eye className="mr-1 inline h-3 w-3" />Opened</dt>
         <dd>{req.open_count ? `${req.open_count} ${req.open_count === 1 ? "time" : "times"}, last ${when(req.last_opened_at)}` : "Not yet"}</dd>
-        <dt className="text-muted-foreground"><FileText className="mr-1 inline h-3 w-3" />Received</dt>
-        <dd>{received} of {req.items.length} documents</dd>
+        <dt className="text-muted-foreground"><FileText className="mr-1 inline h-3 w-3" />{sent ? "Downloaded" : "Received"}</dt>
+        <dd>{sent ? `${downloadedFiles} of ${req.files.length} files` : `${received} of ${req.items.length} documents`}</dd>
         <dt className="text-muted-foreground"><Clock className="mr-1 inline h-3 w-3" />{req.state === "revoked" ? "Turned off" : req.state === "expired" ? "Expired" : "Expires"}</dt>
         <dd>{req.state === "revoked" ? when(req.revoked_at) : day(req.expires_at)}</dd>
       </dl>
+
+      {sent && (
+        <ul className="mt-2 space-y-1">
+          {req.files.map((f) => (
+            <li key={f.id} className="text-xs">
+              <a href={`${API_BASE_URL}/request-files/${f.id}/download`} className="inline-flex items-center gap-1.5 text-primary hover:underline">
+                <Download className="h-3 w-3" /> {f.original_name}
+              </a>{" "}
+              <span className="text-muted-foreground">
+                ({kb(f.size_bytes)}). {f.download_count ? `Downloaded by them ${f.download_count} ${f.download_count === 1 ? "time" : "times"}, last ${when(f.last_downloaded_at)}` : "Not downloaded by them yet"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <ul className="mt-2 space-y-1.5">
         {req.items.map((item) => (

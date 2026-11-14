@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { AlertCircle, Camera, CheckCircle2, Clock, FileText, Loader2, Lock } from "lucide-react";
+import { AlertCircle, Camera, CheckCircle2, Clock, Download, FileText, Loader2, Lock } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 
-// The page a lead or client opens from the text link (task 1.7). No login: the link
+// The page a lead or client opens from the text link (tasks 1.7 and 1.10): upload what
+// the firm asked for, or download what the firm sent. No login: the link
 // itself is the key, so it shows only a first name and the documents asked for.
 // Phone-first. Each file uploads on its own with a progress bar, so one bad file
 // never loses the others.
@@ -77,7 +78,7 @@ export default function UploadPage() {
           <span className="flex h-9 w-9 items-center justify-center rounded-md bg-brand text-[13px] font-bold">DSS</span>
           <div className="leading-tight">
             <p className="font-semibold">{info?.firm_name || "Davis, Saperstein & Salomon"}</p>
-            <p className="flex items-center gap-1 text-xs text-white/70"><Lock className="h-3 w-3" /> Secure document upload</p>
+            <p className="flex items-center gap-1 text-xs text-white/70"><Lock className="h-3 w-3" /> {info?.direction === "send" ? "Secure documents" : "Secure document upload"}</p>
           </div>
         </div>
       </header>
@@ -96,7 +97,34 @@ export default function UploadPage() {
           <Notice icon={Lock} title="This link is no longer active" text="The firm turned this link off. Reply to our text if you still need to send documents." />
         )}
 
-        {info && info.can_upload && (
+        {info && info.can_upload && info.direction === "send" && (
+          <>
+            <h1 className="text-2xl font-bold text-ink">{info.first_name ? `Hi ${info.first_name},` : "Hello,"}</h1>
+            <p className="mt-2 text-[17px] leading-relaxed">{info.note || "Here are your documents."} Tap a document to open or save it.</p>
+            <ul className="mt-6 space-y-3">
+              {info.files.map((f) => (
+                <li key={f.id}>
+                  <a
+                    href={`${API_BASE_URL}/public/file-requests/${token}/files/${f.id}`}
+                    className="flex min-h-14 items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 hover:border-primary"
+                  >
+                    <FileText className="h-6 w-6 shrink-0 text-primary" aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[17px] font-semibold">{f.name}</span>
+                      <span className="block text-sm text-muted-foreground">{f.size_bytes > 1048576 ? `${(f.size_bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size_bytes / 1024))} KB`}</span>
+                    </span>
+                    <Download className="h-5 w-5 shrink-0 text-primary" aria-label="Download" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-8 text-sm text-muted-foreground">
+              This link works until {dayOf(info.expires_at)}. Please save anything you want to keep.
+            </p>
+          </>
+        )}
+
+        {info && info.can_upload && info.direction !== "send" && (
           <>
             <h1 className="text-2xl font-bold text-ink">{info.first_name ? `Hi ${info.first_name},` : "Hello,"}</h1>
             <p className="mt-2 text-[17px] leading-relaxed">

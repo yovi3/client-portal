@@ -101,6 +101,7 @@ export default function ConversationThread({ conversationId, contactName, optedO
                       <p className={`px-1 text-[11px] font-medium text-muted-foreground ${fromStaff ? "text-right" : ""}`}>{name}</p>
                       <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${fromStaff ? "rounded-br-sm bg-primary text-primary-foreground" : msg.message_type === "file_upload" ? "rounded-bl-sm border border-success/40 bg-success/10" : "rounded-bl-sm border border-border bg-card shadow-sm"}`}>
                         {msg.message_type === "file_request" && <span className="mb-1 flex items-center gap-1 text-xs font-semibold opacity-90"><FilePlus className="h-3.5 w-3.5" /> Document request</span>}
+                        {msg.message_type === "file_send" && <span className="mb-1 flex items-center gap-1 text-xs font-semibold opacity-90"><Paperclip className="h-3.5 w-3.5" /> Documents sent</span>}
                         {msg.message_type === "file_upload" && <Paperclip className="mr-1.5 inline h-3.5 w-3.5 text-success" aria-hidden />}
                         {msg.content}
                       </div>

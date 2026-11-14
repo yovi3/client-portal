@@ -1,7 +1,9 @@
-"""Document requests to a phone number (tasks 1.7, 1.8, 1.9, 1.12).
+"""Document links to a phone number (tasks 1.7 to 1.12).
 
-Staff ask a lead for documents; the secure link goes out as a text in the lead's
-conversation. The person opens it without logging in and uploads photos or PDFs.
+Requests: staff ask a lead for documents; the secure link goes out as a text in the
+lead's conversation. The person opens it without logging in and uploads photos or PDFs.
+Sends (task 1.10): staff send documents the other way; the person downloads them
+from the same kind of link, and each download is recorded.
 Every step is recorded: when the link was sent, each time it was opened, each file
 uploaded, each download by staff, and any extension or revocation. Links expire
 after 7 days by default; staff can extend or revoke them.
@@ -11,7 +13,7 @@ import os
 import secrets
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -43,18 +45,26 @@ def _link(req: models.FileRequest) -> str:
 
 
 def _state(req: models.FileRequest) -> str:
+    """waiting, partly, complete, expired or revoked.
+
+    For a request, "complete" means every document arrived; for sent documents,
+    that the person downloaded every file.
+    """
     if req.revoked_at:
         return "revoked"
     if req.completed_at:
         return "complete"
     if _utc(req.expires_at) <= _now():
         return "expired"
+    if req.direction == "send":
+        return "partly" if any(e.kind == "recipient_downloaded" for e in req.events) else "waiting"
     return "partly" if any(i.received_at for i in req.items) else "waiting"
 
 
-def _event(db: Session, req: models.FileRequest, kind: str, user: Optional[models.User] = None, detail: Optional[str] = None):
+def _event(db: Session, req: models.FileRequest, kind: str, user: Optional[models.User] = None,
+           detail: Optional[str] = None, file: Optional[models.RequestFile] = None):
     db.add(models.FileRequestEvent(request_id=req.id, kind=kind, user_id=user.id if user else None,
-                                   detail=(detail or None) and detail[:300]))
+                                   file_id=file.id if file else None, detail=(detail or None) and detail[:300]))
 
 
 def _visitor(request: Request) -> str:
@@ -75,11 +85,21 @@ def _visitor(request: Request) -> str:
     return f"{device}, {address}"
 
 
+def _file_out(f: models.RequestFile, events) -> schemas.RequestFileOut:
+    downloads = [e for e in events if e.kind == "recipient_downloaded" and e.file_id == f.id]
+    return schemas.RequestFileOut(
+        id=f.id, item_id=f.item_id, original_name=f.original_name, content_type=f.content_type,
+        size_bytes=f.size_bytes, uploaded_at=f.uploaded_at, download_count=len(downloads),
+        last_downloaded_at=downloads[-1].at if downloads else None,
+    )
+
+
 def _staff_view(db: Session, req: models.FileRequest) -> schemas.FileRequestOut:
     opens = [e for e in req.events if e.kind == "opened"]
     message = db.get(models.Message, req.message_id) if req.message_id else None
     return schemas.FileRequestOut(
         id=req.id,
+        direction=req.direction,
         state=_state(req),
         link=_link(req),
         note=req.note,
@@ -94,14 +114,11 @@ def _staff_view(db: Session, req: models.FileRequest) -> schemas.FileRequestOut:
         first_opened_at=opens[0].at if opens else None,
         last_opened_at=opens[-1].at if opens else None,
         items=[
-            schemas.FileRequestItemOut(
-                id=i.id, name=i.name, received_at=i.received_at,
-                files=[schemas.RequestFileOut(id=f.id, item_id=f.item_id, original_name=f.original_name,
-                                              content_type=f.content_type, size_bytes=f.size_bytes,
-                                              uploaded_at=f.uploaded_at) for f in i.files],
-            )
+            schemas.FileRequestItemOut(id=i.id, name=i.name, received_at=i.received_at,
+                                       files=[_file_out(f, req.events) for f in i.files])
             for i in req.items
         ],
+        files=[_file_out(f, req.events) for f in req.files if f.item_id is None] if req.direction == "send" else [],
         events=[schemas.FileRequestEventOut(kind=e.kind, at=e.at, who=e.user.name if e.user else None, detail=e.detail)
                 for e in req.events],
     )
@@ -157,10 +174,8 @@ async def create_file_request(
     db.add(req)
     db.flush()
 
-    local_expiry = _utc(req.expires_at).astimezone()
-    until = f"{local_expiry:%b} {local_expiry.day}"
     ask = req.note or "Please upload"
-    content = f"{ask}: {', '.join(names)}. Secure link, valid until {until}: {_link(req)}"
+    content = f"{ask}: {', '.join(names)}. Secure link, valid until {_until(req)}: {_link(req)}"
     message = models.Message(
         content=content,
         conversation_id=conversation.id,
@@ -175,8 +190,14 @@ async def create_file_request(
     req.message_id = message.id
     _event(db, req, "sent", current_user, f"{len(names)} document(s), valid {payload.expires_in_days} days")
     db.commit()
-    conversations.attach_message(db, message, conversation)
+    await _text_the_link(db, conversation, message)
+    db.refresh(req)
+    return _staff_view(db, req)
 
+
+async def _text_the_link(db: Session, conversation: models.Conversation, message: models.Message) -> None:
+    """File the message in the conversation, show it live, and text it."""
+    conversations.attach_message(db, message, conversation)
     full = crud.get_message_by_id(db, message.id)
     plan = texting.prepare_conversation_text(db, full, conversation)
     db.refresh(full)
@@ -185,6 +206,81 @@ async def create_file_request(
     await manager.broadcast(texting.activity_event(conversation.id), STAFF_ACTIVITY_ROOM)
     if plan:
         texting.start_delivery(plan, manager.broadcast)
+
+
+def _until(req: models.FileRequest) -> str:
+    local_expiry = _utc(req.expires_at).astimezone()
+    return f"{local_expiry:%b} {local_expiry.day}"
+
+
+@router.post("/conversations/{conversation_id}/file-sends", response_model=schemas.FileRequestOut, status_code=201)
+async def send_files(
+    conversation_id: int,
+    files: List[UploadFile] = File(...),
+    note: Optional[str] = Form(default=None),
+    expires_in_days: int = Form(default=7),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Send documents (task 1.10): a texted link where the person downloads them."""
+    require_role(current_user, PERSONNEL_ROLES)
+    conversation = db.get(models.Conversation, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    if not files or len(files) > 20:
+        raise HTTPException(status_code=400, detail="Choose between 1 and 20 files to send.")
+    if not 1 <= expires_in_days <= 60:
+        raise HTTPException(status_code=400, detail="A link can last between 1 and 60 days.")
+
+    req = models.FileRequest(
+        token=secrets.token_urlsafe(24),
+        direction="send",
+        conversation_id=conversation.id,
+        lead_id=None if conversation.case_id else conversation.lead_id,
+        case_id=conversation.case_id,
+        note=(note or "").strip()[:300] or None,
+        created_by_user_id=current_user.id,
+        expires_at=_now() + datetime.timedelta(days=expires_in_days),
+    )
+    db.add(req)
+    db.flush()
+    saved_paths = []
+    try:
+        for upload in files:
+            try:
+                saved = save_request_upload(upload.file, req.id)
+            except UploadRejected as rejected:
+                raise HTTPException(status_code=rejected.status,
+                                    detail=f"{upload.filename}: {rejected.message}")
+            finally:
+                await upload.close()
+            saved_paths.append(saved.path)
+            name = os.path.basename(upload.filename or "") or f"document{saved.kind.ext}"
+            db.add(models.RequestFile(
+                request_id=req.id, item_id=None, original_name=name[:200], stored_path=saved.path,
+                content_type=saved.kind.content_type, size_bytes=saved.size, sha256=saved.sha256, uploaded_at=_now(),
+            ))
+    except HTTPException:
+        db.rollback()
+        for path in saved_paths:  # nothing half-sent stays on disk
+            if os.path.exists(path):
+                os.remove(path)
+        raise
+
+    db.flush()
+    names = [f.filename for f in files]
+    ask = req.note or "Here are your documents"
+    content = f"{ask}: {', '.join(os.path.basename(n or '') for n in names)}. Secure link, valid until {_until(req)}: {_link(req)}"
+    message = models.Message(
+        content=content, conversation_id=conversation.id, case_id=conversation.case_id, lead_id=req.lead_id,
+        sender_id=current_user.id, channel="sms", message_type="file_send",
+    )
+    db.add(message)
+    db.flush()
+    req.message_id = message.id
+    _event(db, req, "sent", current_user, f"{len(files)} file(s) to download, valid {expires_in_days} days")
+    db.commit()
+    await _text_the_link(db, conversation, message)
     db.refresh(req)
     return _staff_view(db, req)
 
@@ -236,7 +332,7 @@ def download_request_file(
     f = db.get(models.RequestFile, file_id)
     if not f or not os.path.exists(f.stored_path):
         raise HTTPException(status_code=404, detail="File not found.")
-    _event(db, f.request, "downloaded", current_user, f.original_name)
+    _event(db, f.request, "downloaded", current_user, f.original_name, file=f)
     db.commit()
     return FileResponse(f.stored_path, media_type=f.content_type, filename=f.original_name)
 
@@ -272,8 +368,34 @@ def open_file_request(token: str, request: Request, db: Session = Depends(databa
         can_upload=public_state in ("open", "complete"),
         expires_at=req.expires_at,
         max_file_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
+        direction=req.direction,
         items=[schemas.PublicFileRequestItem(id=i.id, name=i.name, file_count=counts.get(i.id, 0)) for i in req.items],
+        files=[schemas.PublicSentFile(id=f.id, name=f.original_name, size_bytes=f.size_bytes, content_type=f.content_type)
+               for f in req.files if f.item_id is None] if req.direction == "send" else [],
     )
+
+
+@router.get("/public/file-requests/{token}/files/{file_id}")
+def download_sent_file(token: str, file_id: int, request: Request, db: Session = Depends(database.get_db)):
+    """The person downloads a document the firm sent. Each download is recorded."""
+    req = _public_request(db, token)
+    if req.direction != "send":
+        raise HTTPException(status_code=404, detail="File not found.")
+    state = _state(req)
+    if state in ("revoked", "expired"):
+        raise HTTPException(status_code=410, detail="This link is no longer active. Text us and we'll send a new one.")
+    f = next((x for x in req.files if x.id == file_id and x.item_id is None), None)
+    if not f or not os.path.exists(f.stored_path):
+        raise HTTPException(status_code=404, detail="File not found.")
+    _event(db, req, "recipient_downloaded", detail=f"{f.original_name}, {_visitor(request)}", file=f)
+    db.flush()
+    db.refresh(req)
+    downloaded = {e.file_id for e in req.events if e.kind == "recipient_downloaded"}
+    if not req.completed_at and all(x.id in downloaded for x in req.files if x.item_id is None):
+        req.completed_at = _now()
+        _event(db, req, "completed")
+    db.commit()
+    return FileResponse(f.stored_path, media_type=f.content_type, filename=f.original_name)
 
 
 @router.post("/public/file-requests/{token}/items/{item_id}/files", status_code=201)
@@ -291,6 +413,8 @@ async def upload_to_file_request(
         raise HTTPException(status_code=410, detail="This link was turned off by the firm. Text us and we'll send a new one.")
     if state == "expired":
         raise HTTPException(status_code=410, detail="This link has expired. Text us and we'll send a new one.")
+    if req.direction != "request":
+        raise HTTPException(status_code=400, detail="This link is for downloading documents, not uploading.")
     item = next((i for i in req.items if i.id == item_id), None)
     if not item:
         raise HTTPException(status_code=404, detail="That document isn't part of this request.")
@@ -303,13 +427,16 @@ async def upload_to_file_request(
 
     original = os.path.basename(file.filename or "") or f"{item.name}{saved.kind.ext}"
     now = _now()
-    db.add(models.RequestFile(
+    new_file = models.RequestFile(
         request_id=req.id, item_id=item.id, original_name=original[:200], stored_path=saved.path,
         content_type=saved.kind.content_type, size_bytes=saved.size, sha256=saved.sha256, uploaded_at=now,
-    ))
+    )
+    db.add(new_file)
     if not item.received_at:
         item.received_at = now
-    _event(db, req, "uploaded", detail=f"{item.name}: {original[:120]} ({saved.size // 1024} KB), {_visitor(request)}")
+    db.flush()
+    _event(db, req, "uploaded", detail=f"{item.name}: {original[:120]} ({saved.size // 1024} KB), {_visitor(request)}",
+           file=new_file)
     if not req.completed_at and all(i.received_at for i in req.items):
         req.completed_at = now
         _event(db, req, "completed")
