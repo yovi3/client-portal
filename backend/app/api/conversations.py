@@ -16,10 +16,25 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import database, models, schemas
+from ..config import get_settings
 from ..deps import get_current_user
+from ..phone import normalize_phone
+from ..services import conversations as conversation_service
 from .utils import PERSONNEL_ROLES, require_role
 
 router = APIRouter(tags=["conversations"])
+settings = get_settings()
+
+
+def _require_cases_enabled():
+    if not settings.cases_enabled:
+        raise HTTPException(status_code=403, detail="Cases aren't turned on yet.")
+
+
+@router.get("/app-settings", response_model=schemas.AppSettings)
+def app_settings(current_user: models.User = Depends(get_current_user)):
+    """What the screens should show. Cases stay hidden until Phase 2."""
+    return schemas.AppSettings(cases_enabled=settings.cases_enabled)
 
 
 def _now() -> datetime.datetime:
@@ -115,6 +130,7 @@ def list_conversations(
         q = db.query(models.Conversation).filter(
             models.Conversation.lead_id.isnot(None), models.Conversation.case_id.is_(None))
     elif kind == "case":
+        _require_cases_enabled()
         q = db.query(models.Conversation).filter(models.Conversation.case_id.isnot(None))
     else:
         raise HTTPException(status_code=400, detail="kind must be unassigned, lead or case.")
@@ -154,6 +170,7 @@ def link_conversation(
         raise HTTPException(status_code=409, detail="This conversation is already linked to a case.")
 
     if payload.case_id is not None:
+        _require_cases_enabled()
         case = db.get(models.Case, payload.case_id)
         if not case:
             raise HTTPException(status_code=404, detail="Case not found.")
@@ -164,24 +181,7 @@ def link_conversation(
         if conversation.lead_id:
             raise HTTPException(status_code=409, detail="This conversation is already linked to a lead.")
         if payload.new_lead is not None:
-            new = payload.new_lead
-            number = new.lead_number.strip()
-            if db.query(models.Lead).filter(models.Lead.lead_number == number).first():
-                raise HTTPException(status_code=409, detail=f"Lead {number} is already in the portal. Link to it instead.")
-            if new.assigned_user_id is not None:
-                staff = db.get(models.User, new.assigned_user_id)
-                if not staff or staff.role not in PERSONNEL_ROLES:
-                    raise HTTPException(status_code=400, detail="Leads can only be assigned to staff.")
-            lead = models.Lead(
-                lead_number=number,
-                first_name=(new.first_name or "").strip() or None,
-                last_name=(new.last_name or "").strip() or None,
-                phone=conversation.phone,
-                assigned_user_id=new.assigned_user_id,
-                created_by_user_id=current_user.id,
-            )
-            db.add(lead)
-            db.flush()
+            lead = _new_lead(db, payload.new_lead, conversation.phone, current_user)
         else:
             lead = db.get(models.Lead, payload.lead_id)
             if not lead:
@@ -199,6 +199,75 @@ def link_conversation(
     return _summaries(db, [conversation])[0]
 
 
+def _new_lead(db: Session, new: schemas.NewLeadForConversation, phone: str, current_user: models.User) -> models.Lead:
+    number = new.lead_number.strip()
+    if db.query(models.Lead).filter(models.Lead.lead_number == number).first():
+        raise HTTPException(status_code=409, detail=f"Lead {number} is already in the portal. Choose it as an existing lead.")
+    if new.assigned_user_id is not None:
+        staff = db.get(models.User, new.assigned_user_id)
+        if not staff or staff.role not in PERSONNEL_ROLES:
+            raise HTTPException(status_code=400, detail="Leads can only be assigned to staff.")
+    lead = models.Lead(
+        lead_number=number,
+        first_name=(new.first_name or "").strip() or None,
+        last_name=(new.last_name or "").strip() or None,
+        phone=phone,
+        assigned_user_id=new.assigned_user_id,
+        created_by_user_id=current_user.id,
+    )
+    db.add(lead)
+    db.flush()
+    return lead
+
+
+@router.post("/conversations/start", response_model=schemas.StartConversationResult)
+def start_conversation(
+    payload: schemas.StartConversationRequest,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """New text (task 1.5): open the conversation for a number, linked to a lead.
+
+    A number that already has a conversation opens that one rather than a second.
+    """
+    require_role(current_user, PERSONNEL_ROLES)
+    phone = normalize_phone(payload.phone)
+    if not phone:
+        raise HTTPException(status_code=400, detail="That phone number isn't valid. Use 10 digits, like (201) 555-0123.")
+    if (payload.lead_id is None) == (payload.new_lead is None):
+        raise HTTPException(status_code=400, detail="Choose an existing lead or add a new one.")
+
+    existing = conversation_service.find_by_phone(db, phone)
+    if existing and (existing.lead_id or existing.case_id):
+        note = None
+        if payload.lead_id is not None and existing.lead_id != payload.lead_id:
+            note = "This number already has a conversation, so that one is opened."
+        return schemas.StartConversationResult(
+            conversation=_summaries(db, [existing])[0], lead_id=existing.lead_id, existing=True, note=note
+        )
+
+    if payload.new_lead is not None:
+        lead = _new_lead(db, payload.new_lead, phone, current_user)
+    else:
+        lead = db.get(models.Lead, payload.lead_id)
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found.")
+        if not lead.phone:
+            lead.phone = phone
+
+    conversation = existing or conversation_service.get_or_create(db, phone, contact_name=lead.name, lead_id=lead.id)
+    conversation.lead_id = lead.id
+    conversation.dismissed_at = None
+    if not conversation.contact_name:
+        conversation.contact_name = lead.name
+    _log_unlinked_messages(db, conversation)
+    db.commit()
+    db.refresh(conversation)
+    return schemas.StartConversationResult(
+        conversation=_summaries(db, [conversation])[0], lead_id=lead.id, existing=existing is not None
+    )
+
+
 @router.post("/conversations/{conversation_id}/move-to-case", response_model=schemas.ConversationSummary)
 def move_lead_conversation_to_case(
     conversation_id: int,
@@ -208,6 +277,7 @@ def move_lead_conversation_to_case(
 ):
     """The lead signed: the conversation moves to the case and the lead is marked Signed."""
     require_role(current_user, PERSONNEL_ROLES)
+    _require_cases_enabled()
     conversation = _get_or_404(db, conversation_id)
     if not conversation.lead_id:
         raise HTTPException(status_code=400, detail="Only a lead's conversation can be moved to a case.")

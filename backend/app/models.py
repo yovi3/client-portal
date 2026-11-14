@@ -317,6 +317,86 @@ class Conversation(Base):
         return "unassigned"
 
 
+class FileRequest(Base):
+    """A request for documents, sent to a phone number as a secure upload link.
+
+    The link (token) works without a login, expires (7 days by default), and can be
+    extended or revoked by staff. Every send, open, upload and download is recorded
+    in FileRequestEvent so staff can see exactly what happened and when.
+    """
+    __tablename__ = "file_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=True, index=True)
+    message_id = Column(Integer, ForeignKey("messages.id"), nullable=True)  # the text that carried the link
+    note = Column(String, nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)  # every item has at least one file
+
+    conversation = relationship("Conversation")
+    lead = relationship("Lead")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    items = relationship("FileRequestItem", back_populates="request", cascade="all, delete-orphan",
+                         order_by="FileRequestItem.position")
+    files = relationship("RequestFile", back_populates="request", cascade="all, delete-orphan",
+                         order_by="RequestFile.uploaded_at")
+    events = relationship("FileRequestEvent", back_populates="request", cascade="all, delete-orphan",
+                          order_by="FileRequestEvent.at")
+
+
+class FileRequestItem(Base):
+    """One document asked for ("Insurance card"). It can receive several files (front and back)."""
+    __tablename__ = "file_request_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("file_requests.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    position = Column(Integer, nullable=False, default=0)
+    received_at = Column(DateTime, nullable=True)  # first file arrived
+
+    request = relationship("FileRequest", back_populates="items")
+    files = relationship("RequestFile", back_populates="item")
+
+
+class RequestFile(Base):
+    """A file someone uploaded through a request link. Stored under a random name."""
+    __tablename__ = "request_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("file_requests.id"), nullable=False, index=True)
+    item_id = Column(Integer, ForeignKey("file_request_items.id"), nullable=True, index=True)
+    original_name = Column(String, nullable=False)
+    stored_path = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    sha256 = Column(String, nullable=False)
+    uploaded_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+    request = relationship("FileRequest", back_populates="files")
+    item = relationship("FileRequestItem", back_populates="files")
+
+
+class FileRequestEvent(Base):
+    """What happened to a request: sent, opened, uploaded, downloaded, extended, revoked."""
+    __tablename__ = "file_request_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("file_requests.id"), nullable=False, index=True)
+    kind = Column(String, nullable=False)
+    at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # staff member, when staff did it
+    detail = Column(String, nullable=True)  # file name, new expiry, browser, address
+
+    request = relationship("FileRequest", back_populates="events")
+    user = relationship("User")
+
+
 class DirectMessage(Base):
     __tablename__ = "direct_messages"
 

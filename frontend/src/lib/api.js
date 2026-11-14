@@ -7,6 +7,8 @@ const getWsBaseUrl = () => {
   return API_BASE_URL;
 };
 
+const PUBLIC_PAGE_PREFIXES = ["/login", "/u", "/requests", "/invite", "/auth/callback", "/home"];
+
 const apiFetch = async (path, options = {}) => {
   const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
   const response = await fetch(url, {
@@ -15,10 +17,12 @@ const apiFetch = async (path, options = {}) => {
   });
 
   // Global session-expiry handling: clear local auth state and force login.
+  // Pages meant for people without an account (upload links, invites) are left alone.
   if (response.status === 401 && typeof window !== "undefined") {
     localStorage.removeItem("user");
-    const isLoginPage = window.location.pathname === "/login";
-    if (!isLoginPage) {
+    const here = window.location.pathname;
+    const isPublicPage = PUBLIC_PAGE_PREFIXES.some((p) => here === p || here.startsWith(`${p}/`));
+    if (!isPublicPage) {
       window.location.href = "/login";
     }
   }

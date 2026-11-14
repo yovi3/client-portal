@@ -76,6 +76,11 @@ class Settings:
         # directly fails with error 21606 while it is in a service.
         self.twilio_messaging_service_sid = _get_env("TWILIO_MESSAGING_SERVICE_SID")
         self.sms_sender_name = _get_env("SMS_SENDER_NAME", "Davis, Saperstein & Salomon")
+        # Cases stay hidden (no Cases menu, no linking texts to cases) until Phase 2 turns
+        # them on. The first rollout is the intake team, working with leads only.
+        # Where uploaded files are kept. Local disk on robo; Azure private storage before go-live (task 4.5).
+        self.upload_directory = _get_env("UPLOAD_DIRECTORY", "uploads")
+        self.cases_enabled = (_get_env("CASES_ENABLED", "false") or "false").strip().lower() in {"1", "true", "yes", "on"}
         twilio_validate_signature = (_get_env("TWILIO_VALIDATE_SIGNATURE", "true") or "true").strip().lower()
         self.twilio_validate_signature = twilio_validate_signature in {"1", "true", "yes", "on"}
 

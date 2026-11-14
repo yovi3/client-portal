@@ -2,7 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPExce
 from sqlalchemy.orm import Session
 from typing import Dict, List
 
-from .. import database, schemas, crud, auth
+from .. import database, schemas, crud, auth, models
 from ..services import conversations, texting
 from ..config import get_settings
 from .utils import ensure_case_access, PERSONNEL_ROLES
@@ -23,13 +23,16 @@ class ConnectionManager:
         self.active_connections[room].append(websocket)
 
     def disconnect(self, websocket: WebSocket, room: str):
-        if room in self.active_connections:
+        if room in self.active_connections and websocket in self.active_connections[room]:
             self.active_connections[room].remove(websocket)
 
     async def broadcast(self, message: str, room: str):
-        if room in self.active_connections:
-            for connection in self.active_connections[room]:
+        # A closed browser tab must not stop the message reaching everyone else.
+        for connection in list(self.active_connections.get(room, [])):
+            try:
                 await connection.send_text(message)
+            except Exception:
+                self.disconnect(connection, room)
 
 
 manager = ConnectionManager()
@@ -151,4 +154,82 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         manager.disconnect(websocket, room)
     except Exception:
+        manager.disconnect(websocket, room)
+
+
+# ---------------------------------------------------------------------------
+# Conversations by phone number (leads first). Staff only.
+# ---------------------------------------------------------------------------
+
+STAFF_ACTIVITY_ROOM = "staff_activity"
+
+
+def _staff_from_cookie(websocket: WebSocket, db: Session):
+    token = websocket.cookies.get(settings.auth_cookie_name)
+    if not token:
+        return None
+    try:
+        user_id = int(auth.decode_access_token(token).get("sub"))
+    except Exception:
+        return None
+    user = crud.get_user_by_id(db, user_id)
+    return user if user and user.role in PERSONNEL_ROLES else None
+
+
+@router.websocket("/ws/staff/activity")
+async def websocket_staff_activity(websocket: WebSocket, db: Session = Depends(get_ws_db)):
+    """Lists listen here and reload a conversation when something new happens in it."""
+    if not _staff_from_cookie(websocket, db):
+        await websocket.close(code=1008)
+        return
+    await manager.connect(websocket, STAFF_ACTIVITY_ROOM)
+    try:
+        while True:
+            await websocket.receive_text()  # nothing to receive; keeps the connection open
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, STAFF_ACTIVITY_ROOM)
+
+
+@router.websocket("/ws/conversation/{conversation_id}")
+async def websocket_conversation(
+    websocket: WebSocket,
+    conversation_id: int,
+    db: Session = Depends(get_ws_db),
+):
+    """Live conversation with one phone number. Staff messages are texted to it."""
+    user = _staff_from_cookie(websocket, db)
+    conversation = db.get(models.Conversation, conversation_id)
+    if not user or not conversation:
+        await websocket.close(code=1008)
+        return
+    room = f"conv_{conversation_id}"
+    await manager.connect(websocket, room)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            content = (data.get("content") or "").strip()
+            if not content:
+                continue
+            db.refresh(conversation)
+            message = models.Message(
+                content=content,
+                conversation_id=conversation.id,
+                case_id=conversation.case_id,
+                lead_id=None if conversation.case_id else conversation.lead_id,
+                sender_id=user.id,
+                channel="sms",
+                message_type="text",
+            )
+            db.add(message)
+            db.commit()
+            conversations.attach_message(db, message, conversation)
+            full = crud.get_message_by_id(db, message.id)
+            plan = texting.prepare_conversation_text(db, full, conversation)
+            db.refresh(full)
+            for target in texting.rooms_for(full):
+                await manager.broadcast(texting.message_event(full), target)
+            await manager.broadcast(texting.activity_event(conversation.id), STAFF_ACTIVITY_ROOM)
+            if plan:
+                texting.start_delivery(plan, manager.broadcast)
+    except WebSocketDisconnect:
         manager.disconnect(websocket, room)

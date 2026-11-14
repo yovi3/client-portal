@@ -529,6 +529,9 @@ class Lead(BaseModel):
     conversation_id: Optional[int] = None
     # Set when the phone number already belongs to a conversation about something else.
     phone_note: Optional[str] = None
+    last_message: Optional["ConversationLastMessage"] = None
+    last_message_at: Optional[datetime] = None
+    sms_opted_out: bool = False
 
     class Config:
         from_attributes = True
@@ -596,3 +599,99 @@ class ConversationLinkRequest(BaseModel):
 
 class MoveToCaseRequest(BaseModel):
     case_id: int
+
+
+class AppSettings(BaseModel):
+    cases_enabled: bool
+
+
+class StartConversationRequest(BaseModel):
+    """New text: a phone number plus an existing lead or a new one."""
+    phone: str = Field(min_length=1, max_length=40)
+    lead_id: Optional[int] = None
+    new_lead: Optional[NewLeadForConversation] = None
+
+
+class StartConversationResult(BaseModel):
+    conversation: ConversationSummary
+    lead_id: Optional[int] = None
+    existing: bool = False   # the number already had a conversation
+    note: Optional[str] = None
+
+
+Lead.model_rebuild()
+
+
+# ========================================================
+# Document requests to a phone number (tasks 1.7 to 1.9)
+# ========================================================
+
+class FileRequestCreate(BaseModel):
+    items: List[str] = Field(min_length=1, max_length=20)
+    note: Optional[str] = Field(default=None, max_length=300)
+    expires_in_days: int = Field(default=7, ge=1, le=60)
+
+
+class FileRequestExtend(BaseModel):
+    days: int = Field(default=7, ge=1, le=60)
+
+
+class RequestFileOut(BaseModel):
+    id: int
+    item_id: Optional[int] = None
+    original_name: str
+    content_type: str
+    size_bytes: int
+    uploaded_at: Optional[datetime] = None
+
+
+class FileRequestItemOut(BaseModel):
+    id: int
+    name: str
+    received_at: Optional[datetime] = None
+    files: List[RequestFileOut] = []
+
+
+class FileRequestEventOut(BaseModel):
+    kind: str
+    at: Optional[datetime] = None
+    who: Optional[str] = None
+    detail: Optional[str] = None
+
+
+class FileRequestOut(BaseModel):
+    """What staff see: the request, its state, and its full trail."""
+    id: int
+    state: str  # waiting, partly, complete, expired, revoked
+    link: str
+    note: Optional[str] = None
+    created_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    sent_status: Optional[str] = None
+    sent_error: Optional[str] = None
+    expires_at: datetime
+    revoked_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    open_count: int = 0
+    first_opened_at: Optional[datetime] = None
+    last_opened_at: Optional[datetime] = None
+    items: List[FileRequestItemOut] = []
+    events: List[FileRequestEventOut] = []
+
+
+class PublicFileRequestItem(BaseModel):
+    id: int
+    name: str
+    file_count: int
+
+
+class PublicFileRequest(BaseModel):
+    """What the person with the link sees. No last name, phone or case details."""
+    firm_name: str
+    first_name: Optional[str] = None
+    note: Optional[str] = None
+    state: str  # open, complete, expired, revoked
+    can_upload: bool
+    expires_at: datetime
+    max_file_mb: int
+    items: List[PublicFileRequestItem] = []

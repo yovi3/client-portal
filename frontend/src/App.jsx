@@ -9,6 +9,7 @@ import Documents from "@/pages/Documents";
 import Messages from "@/pages/Messages";
 import Leads from "@/pages/Leads";
 import NeedsAssigning from "@/pages/NeedsAssigning";
+import UploadPage from "@/pages/UploadPage";
 import AzureCallback from './pages/AzureCallback'
 import SmsLandingPage from './pages/SmsLandingPage'
 import CaseDetail from '@/pages/CaseDetail'
@@ -40,6 +41,8 @@ export default function App() {
         <Route path="/case-inbox" element={<Navigate to="/needs-assigning" replace />} />
         <Route path="/auth/callback" element={<AzureCallback />} />
         <Route path="/requests/:token" element={<SmsLandingPage />} />
+        {/* Document request links texted to leads (no login; the link is the key). */}
+        <Route path="/u/:token" element={<UploadPage />} />
         <Route path="/cases/:id" element={<RequireAuth><CaseDetail /></RequireAuth>} />
         <Route path="/createcase" element={<RequireRole allowedRoles={personnelRoles}><CreateCase /></RequireRole>} />
         <Route path="/admin-dashboard" element={<RequireRole allowedRoles={personnelRoles}><AdminDashboard /></RequireRole>} />

@@ -22,8 +22,10 @@ from .. import crud, database, models, schemas
 from . import conversations
 from ..phone import normalize_phone
 from .sms import TWILIO_ERROR_UNSUBSCRIBED, build_client_text, describe_error, send_sms
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 # Carrier/CTIA opt-out and opt-in keywords (Twilio's Messaging Service replies to these itself).
 OPT_OUT_KEYWORDS = {"STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT"}
@@ -60,6 +62,21 @@ def message_event(message: models.Message) -> str:
     return schemas.Message.from_orm(message).model_dump_json()
 
 
+def activity_event(conversation_id: int) -> str:
+    """Tells open lists that a conversation has something new (they reload it)."""
+    return json.dumps({"type": "conversation_activity", "conversation_id": conversation_id})
+
+
+def rooms_for(message: models.Message) -> list:
+    """Every live room that shows this message: its conversation, and its case chat."""
+    rooms = []
+    if message.conversation_id:
+        rooms.append(f"conv_{message.conversation_id}")
+    if message.case_id:
+        rooms.append(f"case_{message.case_id}")
+    return rooms
+
+
 def set_opt_out(
     db: Session,
     conversation: Optional[models.Conversation],
@@ -92,7 +109,7 @@ class TextPlan:
     message_id: int
     phone: str
     body: str
-    room: str
+    rooms: list
 
 
 def prepare_client_text(db: Session, message: models.Message) -> Optional[TextPlan]:
@@ -111,7 +128,20 @@ def prepare_client_text(db: Session, message: models.Message) -> Optional[TextPl
     else:
         message.sms_status, message.sms_error = "sending", None
         sender_first = message.sender_user.first_name if message.sender_user else None
-        plan = TextPlan(message.id, profile.phone, build_client_text(sender_first, message.content), f"case_{message.case_id}")
+        plan = TextPlan(message.id, profile.phone, build_client_text(sender_first, message.content), rooms_for(message))
+    db.commit()
+    return plan
+
+
+def prepare_conversation_text(db: Session, message: models.Message, conversation: models.Conversation) -> Optional[TextPlan]:
+    """A staff message in a lead (or any) conversation is texted to that conversation's number."""
+    if conversation.sms_opted_out:
+        message.sms_status, message.sms_error = "opted_out", describe_error(TWILIO_ERROR_UNSUBSCRIBED)
+        plan = None
+    else:
+        message.sms_status, message.sms_error = "sending", None
+        sender_first = message.sender_user.first_name if message.sender_user else None
+        plan = TextPlan(message.id, conversation.phone, build_client_text(sender_first, message.content), rooms_for(message))
     db.commit()
     return plan
 
@@ -142,7 +172,8 @@ async def _deliver(plan: TextPlan, broadcast: Broadcast) -> None:
             if _RANK.get(message.sms_status, -1) < _RANK["sent"]:
                 message.sms_status = "sent"
         db.commit()
-        await broadcast(status_event(message), plan.room)
+        for room in plan.rooms:
+            await broadcast(status_event(message), room)
     except Exception:
         logger.exception("Could not record SMS result for message %s", plan.message_id)
     finally:
@@ -179,6 +210,8 @@ def handle_inbound(db: Session, from_number: str, body: str, sid: Optional[str],
         # First text from this number: link it if it is obviously about one thing.
         open_cases = [c for c in (client.client_cases if client else [])
                       if (c.status or "").lower() not in CLOSED_CASE_STATUSES]
+        if not settings.cases_enabled:
+            open_cases = []  # cases are hidden: a client's number waits in Needs assigning
         lead = None
         if len(open_cases) != 1:
             lead = (db.query(models.Lead)

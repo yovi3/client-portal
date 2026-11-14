@@ -7,8 +7,11 @@ import {
   Inbox,
   LogOut,
   MessagesSquare,
+  PenSquare,
   Settings,
 } from "lucide-react";
+import NewTextDialog from "@/components/conversation/NewTextDialog";
+import { useAppSettings } from "@/lib/appSettings";
 import { useUser } from "@/lib/UserContext";
 import { usePolling } from "@/lib/PollingContext";
 import { apiFetch } from "@/lib/api";
@@ -17,6 +20,8 @@ import { PERSONNEL_ROLES } from "@/pages/admin/utils";
 // Staff navigation. Every conversation is with a phone number and belongs to a
 // LeadBase lead or a LawBase case; texts that belong to neither wait in
 // "Needs assigning". Team chat is internal and never texted, so it sits apart.
+// During the intake-team rollout cases are hidden (CASES_ENABLED off), and with
+// them Cases and Document requests (which are case-based until task 1.7).
 const STAFF_NAV = [
   { key: "assign", name: "Needs assigning", icon: Inbox, to: "/needs-assigning" },
   { key: "leads", name: "Leads", icon: Filter, to: "/leads" },
@@ -41,6 +46,10 @@ export default function Sidebar({ onNavigate }) {
   const { unreadCount } = usePolling();
   const isStaff = PERSONNEL_ROLES.includes(user?.role);
   const [needsAssigning, setNeedsAssigning] = useState(0);
+  const [newTextOpen, setNewTextOpen] = useState(false);
+  const { cases_enabled: casesEnabled } = useAppSettings();
+  const staffNav = STAFF_NAV.filter((i) => casesEnabled || i.key !== "cases");
+  const staffInternal = STAFF_NAV_INTERNAL.filter((i) => casesEnabled || i.key !== "requests");
 
   // How many numbers are waiting to be linked to a lead or case. Refreshed on every
   // page change, when Needs assigning links or dismisses one, and every 30 seconds.
@@ -112,14 +121,27 @@ export default function Sidebar({ onNavigate }) {
         </div>
       </div>
 
+      {isStaff && (
+        <div className="px-3 pb-4">
+          <button
+            type="button"
+            onClick={() => setNewTextOpen(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-white/90"
+          >
+            <PenSquare className="h-4 w-4" /> New text
+          </button>
+          <NewTextDialog open={newTextOpen} onClose={() => { setNewTextOpen(false); onNavigate?.(); }} />
+        </div>
+      )}
+
       <nav className="flex-1 space-y-6 overflow-y-auto px-3" aria-label="Main">
         <div className="space-y-1">
-          {(isStaff ? STAFF_NAV : CLIENT_NAV).map((item) => <NavItem key={item.key} item={item} />)}
+          {(isStaff ? staffNav : CLIENT_NAV).map((item) => <NavItem key={item.key} item={item} />)}
         </div>
         {isStaff && (
           <div className="space-y-1 border-t border-white/10 pt-4">
             <p className="px-3 pb-1 text-[11px] text-white/50">Internal</p>
-            {STAFF_NAV_INTERNAL.map((item) => <NavItem key={item.key} item={item} />)}
+            {staffInternal.map((item) => <NavItem key={item.key} item={item} />)}
           </div>
         )}
       </nav>

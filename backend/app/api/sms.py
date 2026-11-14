@@ -10,7 +10,7 @@ from ..deps import get_current_user
 from .utils import PERSONNEL_ROLES, require_role
 from ..config import get_settings
 from ..services import conversations, texting
-from .ws import manager
+from .ws import STAFF_ACTIVITY_ROOM, manager
 
 
 router = APIRouter(tags=["sms"])
@@ -83,11 +83,12 @@ async def twilio_sms_webhook(
         sid=payload.get("MessageSid"),
         opt_out_type=payload.get("OptOutType"),  # sent by Twilio Advanced Opt-Out
     )
-    if message and message.case_id:
-        logger.info("Inbound SMS added to case %s as message %s", message.case_id, message.id)
-        await manager.broadcast(texting.message_event(message), f"case_{message.case_id}")
-    elif message:
-        logger.info("Inbound SMS added to conversation %s (lead %s)", message.conversation_id, message.lead_id)
+    if message:
+        logger.info("Inbound SMS added to conversation %s (lead %s, case %s)",
+                    message.conversation_id, message.lead_id, message.case_id)
+        for room in texting.rooms_for(message):
+            await manager.broadcast(texting.message_event(message), room)
+        await manager.broadcast(texting.activity_event(message.conversation_id), STAFF_ACTIVITY_ROOM)
     else:
         logger.info("Inbound SMS from %s was a repeat delivery; ignored", client_phone)
 
@@ -114,7 +115,8 @@ async def twilio_status_webhook(
     if sid:
         message = texting.apply_status_report(db, sid, payload.get("MessageStatus"), payload.get("ErrorCode"))
         if message:
-            await manager.broadcast(texting.status_event(message), f"case_{message.case_id}")
+            for room in texting.rooms_for(message):
+                await manager.broadcast(texting.status_event(message), room)
     return Response(status_code=204)
 
 

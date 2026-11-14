@@ -17,6 +17,7 @@ import { apiFetch } from "@/lib/api";
 import { useUser } from "@/lib/UserContext";
 import { formatPhone } from "@/lib/texting";
 import { LeadTag } from "@/pages/Leads";
+import { useAppSettings } from "@/lib/appSettings";
 
 // Tasks 1.3 and 1.6: texts from numbers that aren't linked to a lead or a case yet.
 // Staff link each number to a lead (existing or new) or a case, or mark it not related.
@@ -53,6 +54,7 @@ async function postJson(path, body) {
 }
 
 export default function NeedsAssigning() {
+  const { cases_enabled: casesEnabled } = useAppSettings();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -102,7 +104,7 @@ export default function NeedsAssigning() {
         <div>
           <h1 className="text-[22px] font-bold tracking-tight">Needs assigning</h1>
           <p className="text-sm text-muted-foreground">
-            Texts from numbers that aren't linked to a lead or a case yet. Link each one so its texts are logged in the right place.
+            Texts from numbers that aren't linked to a lead yet. Link each one so its texts are logged in the right place.
           </p>
         </div>
 
@@ -139,7 +141,9 @@ export default function NeedsAssigning() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" onClick={() => setLinkLeadFor(conv)}><Filter className="h-4 w-4" /> Link to lead</Button>
-                  <Button size="sm" variant="outline" onClick={() => setLinkCaseFor(conv)}><Briefcase className="h-4 w-4" /> Link to case</Button>
+                  {casesEnabled && (
+                    <Button size="sm" variant="outline" onClick={() => setLinkCaseFor(conv)}><Briefcase className="h-4 w-4" /> Link to case</Button>
+                  )}
                   <Button size="sm" variant="ghost" onClick={() => setDismissFor(conv)}>Not related</Button>
                 </div>
               </div>

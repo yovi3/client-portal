@@ -4,6 +4,7 @@ Every lead with a phone number gets its conversation right away, so it is ready
 to text. A number that already has a conversation about a case or another lead
 keeps that link; the response says so instead of moving it silently.
 """
+import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -81,17 +82,41 @@ def list_leads(
     leads = db.query(models.Lead).order_by(models.Lead.created_at.desc(), models.Lead.id.desc()).all()
     convs = db.query(models.Conversation).all()
     by_phone = {c.phone: c for c in convs}
+    by_lead = {}
+    for c in convs:
+        if c.lead_id:
+            by_lead.setdefault(c.lead_id, []).append(c)
     result = []
     for lead in leads:
         item = schemas.Lead.model_validate(lead)
-        conv = by_phone.get(lead.phone) if lead.phone else None
-        if conv and conv.lead_id == lead.id:
+        own = [c for c in by_lead.get(lead.id, []) if not c.case_id]
+        # The conversation for the lead's current number, else its most recent one.
+        conv = next((c for c in own if c.phone == lead.phone), None) or (
+            max(own, key=lambda c: c.last_message_at or c.created_at) if own else None)
+        if conv:
             item.conversation_id = conv.id
-        elif conv and conv.case_id:
-            item.phone_note = "This number already has a conversation linked to a case."
-        elif conv and conv.lead_id:
-            item.phone_note = "This number already has a conversation linked to another lead."
+            item.sms_opted_out = bool(conv.sms_opted_out)
+            item.last_message_at = conv.last_message_at
+            last = (db.query(models.Message).filter(models.Message.conversation_id == conv.id)
+                    .order_by(models.Message.timestamp.desc(), models.Message.id.desc()).first())
+            if last:
+                item.last_message = schemas.ConversationLastMessage(
+                    content=last.content, timestamp=last.timestamp,
+                    inbound=last.sender_id is None or (last.sender_user is not None and last.sender_user.role == "client"),
+                )
+        else:
+            other = by_phone.get(lead.phone) if lead.phone else None
+            if other and other.case_id:
+                item.phone_note = "This number already has a conversation linked to a case."
+            elif other and other.lead_id:
+                item.phone_note = "This number already has a conversation linked to another lead."
         result.append(item)
+    # Most recent conversation first; leads nobody has texted yet after them, newest first.
+    def stamp(value):
+        if value is None:
+            return 0.0
+        return (value if value.tzinfo else value.replace(tzinfo=datetime.timezone.utc)).timestamp()
+    result.sort(key=lambda l: (l.last_message_at is not None, stamp(l.last_message_at or l.created_at)), reverse=True)
     return result
 
 
