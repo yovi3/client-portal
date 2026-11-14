@@ -36,6 +36,8 @@ import {
   Download,
   AlertCircle,
   Briefcase,
+  Check,
+  CheckCheck,
 } from "lucide-react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { format } from "date-fns"
@@ -48,6 +50,7 @@ import {
   getDocumentRequestBody,
   getDocumentRequestTitle,
 } from "@/lib/documentRequestText"
+import { buildClientText, countTextParts, describeTextStatus, getTextingTarget } from "@/lib/texting"
 
 // --- (NEW) API URL (moved to top level for global use) ---
 // --- UTILITY FUNCTIONS ---
@@ -464,10 +467,15 @@ export default function Messages() {
         }
         const cases = await casesRes.json()
         if (!Array.isArray(cases)) throw new Error("Invalid data format received from server.")
+        const staffView = STAFF_ROLES.has(user.role)
         setConversations(cases.map((c) => ({
           id: c.id,
           type: "case",
-          participantName: c.title || "Untitled Case",
+          // Staff think in people ("I'm texting Mrs. Smith"), clients in their case.
+          participantName: staffView
+            ? (c.clients || []).map((cl) => cl.name).filter(Boolean).join(", ") || c.title || "Untitled case"
+            : c.title || "Untitled case",
+          caseTitle: c.title || "Untitled case",
           unreadCount: c.unread_count || 0,
           _caseData: c,
         })))
@@ -569,6 +577,13 @@ export default function Messages() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // The phone preview appears under the box once typing starts and takes some height;
+  // keep the newest message in view when it does.
+  const isComposing = newMessage.trim().length > 0
+  useEffect(() => {
+    scrollToBottom()
+  }, [isComposing])
   
   useEffect(() => {
     if (!isRequestingDocs) {
@@ -609,7 +624,8 @@ export default function Messages() {
   }
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    // Jump, don't glide: opening a conversation should land on the latest message.
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" })
   }
 
   const sendMessage = () => {
@@ -695,7 +711,8 @@ export default function Messages() {
   // --- (END NEW) ---
 
   const q = searchQuery.toLowerCase()
-  const filteredCases = conversations.filter((c) => c.participantName.toLowerCase().includes(q))
+  const filteredCases = conversations.filter((c) =>
+    `${c.participantName} ${c.caseTitle || ""}`.toLowerCase().includes(q))
   const filteredDms = dmConversations.filter((d) => d.participantName.toLowerCase().includes(q))
 
   // --- RENDER ---
@@ -708,6 +725,19 @@ export default function Messages() {
   }
 
   const isStaff = STAFF_ROLES.has(user?.role)
+  const textingTarget = isStaff && selectedConversation?.type === "case"
+    ? getTextingTarget(selectedConversation._caseData) : null
+  const composerPlaceholder = !selectedConversation ? "" :
+    selectedConversation.type !== "case" || !isStaff ? "Type your message"
+      : textingTarget?.mode === "text"
+        ? `Message ${textingTarget.client.name}: sent by text and in the portal`
+        : `Message ${textingTarget?.client?.name || "the client"}: portal only`
+  const textPreview = textingTarget?.mode === "text" && newMessage.trim()
+    ? (() => {
+        const text = buildClientText(user.first_name, newMessage)
+        return { text, parts: countTextParts(text) }
+      })()
+    : null
 
   return (
     <MainLayout>
@@ -750,7 +780,7 @@ export default function Messages() {
                 <div>
                   {/* Direct Messages section */}
                   <div className="px-4 pt-3 pb-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Direct Messages</p>
+                    <h2 className="text-xs font-semibold text-muted-foreground">Direct messages</h2>
                   </div>
                   {filteredDms.length === 0 && (
                     <p className="px-4 py-2 text-xs text-muted-foreground">No direct messages</p>
@@ -761,13 +791,13 @@ export default function Messages() {
 
                   {/* Case conversations section */}
                   <div className="px-4 pt-4 pb-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Cases</p>
+                    <h2 className="text-xs font-semibold text-muted-foreground">Cases</h2>
                   </div>
                   {filteredCases.length === 0 && (
                     <p className="px-4 py-2 text-xs text-muted-foreground">No case conversations</p>
                   )}
                   {filteredCases.map((conv) => (
-                    <ConvButton key={`case-${conv.id}`} conv={conv} selected={selectedConversation} onSelect={setSelectedConversation} subtitle={conv._caseData?.clients?.[0]?.name || ""} />
+                    <ConvButton key={`case-${conv.id}`} conv={conv} selected={selectedConversation} onSelect={setSelectedConversation} subtitle={isStaff ? conv.caseTitle : ""} />
                   ))}
                 </div>
               )}
@@ -790,17 +820,23 @@ export default function Messages() {
                         : <Briefcase className="h-4 w-4 text-muted-foreground" />
                       }
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-base">{selectedConversation.participantName}</h3>
-                      {selectedConversation.type === "case" && STAFF_ROLES.has(user.role) && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                          <Smartphone className="h-3 w-3" />
-                          {(() => {
-                            const client = selectedConversation._caseData?.clients?.[0];
-                            const phone = client?.client_profile?.phone;
-                            return phone || selectedConversation._caseData?.lawbase_case_number || "No phone on file";
-                          })()}
-                        </p>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-base truncate">{selectedConversation.participantName}</h3>
+                      {selectedConversation.type === "case" && isStaff && (
+                        <>
+                          <p className="text-xs text-muted-foreground truncate">{selectedConversation.caseTitle}</p>
+                          {textingTarget?.mode === "text" ? (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                              <Smartphone className="h-3 w-3" />
+                              Texts go to {textingTarget.phone}
+                            </p>
+                          ) : (
+                            <p className="text-xs flex items-center gap-1.5 mt-0.5 text-warning">
+                              <AlertCircle className="h-3 w-3" />
+                              {textingTarget?.reason}
+                            </p>
+                          )}
+                        </>
                       )}
                       {selectedConversation.type === "dm" && (
                         <p className="text-xs text-muted-foreground">{selectedConversation._user?.email || "Direct message"}</p>
@@ -815,11 +851,14 @@ export default function Messages() {
 
               {/* Messages Area */}
               <div className="flex-1 overflow-hidden bg-muted/10">
-                <ScrollArea className="h-full p-6 pr-2">
-                  <div className="space-y-4">
+                <ScrollArea className="h-full">
+                  <div className="space-y-4 p-6 pr-4">
                     {messages.map((msg, idx) => {
                       const isOwn = msg.sender_id === user.id
                       const senderName = isOwn ? "You" : msg.sender_user?.name || selectedConversation.participantName
+                      const senderInitials = getInitials(isOwn ? user.name : senderName)
+                      const fromStaff = STAFF_ROLES.has(msg.sender_user?.role || (isOwn ? user.role : ""))
+                      const textStatus = isStaff && fromStaff ? describeTextStatus(msg.sms_status, msg.sms_error) : null
                       const showDateSep = idx === 0 || !isSameDay(messages[idx - 1].timestamp, msg.timestamp)
                       
                       // --- ROBUST CHECK for Document Request ---
@@ -859,7 +898,7 @@ export default function Messages() {
                                     : "bg-muted text-foreground text-xs font-medium"
                                 }
                               >
-                                {getInitials(senderName)}
+                                {senderInitials}
                               </AvatarFallback>
                             </Avatar>
                             <div className="space-y-1">
@@ -924,11 +963,26 @@ export default function Messages() {
                               </div>
                               <div className={`flex items-center gap-1.5 px-1 ${isOwn ? "flex-row-reverse" : ""}`}>
                                 <p className="text-[11px] text-muted-foreground">{formatTime(msg.timestamp)}</p>
-                                {msg.channel === "sms" && (
-                                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                                    <Smartphone className="h-3 w-3" />
-                                    <span>SMS</span>
-                                  </div>
+                                {isStaff && !fromStaff && selectedConversation.type === "case" && (
+                                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                    {msg.channel === "sms" && <Smartphone className="h-3 w-3" />}
+                                    {msg.channel === "sms" ? "By text" : "In portal"}
+                                  </span>
+                                )}
+                                {textStatus && (
+                                  <span
+                                    role="status"
+                                    className={`flex items-center gap-1 text-[11px] ${
+                                      textStatus.tone === "danger" ? "text-destructive font-medium"
+                                        : textStatus.tone === "warning" ? "text-warning"
+                                        : "text-muted-foreground"
+                                    }`}
+                                  >
+                                    {textStatus.busy && <Loader2 className="h-3 w-3 animate-spin" />}
+                                    {textStatus.done && <CheckCheck className="h-3 w-3 text-success" />}
+                                    {!textStatus.busy && !textStatus.done && textStatus.tone === "muted" && <Check className="h-3 w-3" />}
+                                    {textStatus.label}
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -944,35 +998,55 @@ export default function Messages() {
 
               {/* Input Area */}
               <div className="border-t border-border/50 bg-card p-4">
-                <div className="flex gap-2 items-end">
+                <div className="flex gap-2 items-start">
                   {STAFF_ROLES.has(user.role) && selectedConversation?.type === "case" && (
                     <Button
                       onClick={() => setIsRequestingDocs(true)}
                       variant="outline"
                       size="icon"
-                      className="h-10 w-10 shrink-0 mb-2"
+                      className="h-11 w-11 shrink-0"
                       title="Request documents"
+                      aria-label="Request documents"
                     >
                       <FilePlus className="h-4 w-4" />
                     </Button>
                   )}
 
-                  <div className="flex-1 flex gap-2 items-center bg-muted/50 rounded-2xl px-4 py-2 border border-border/50 focus-within:border-primary/50 transition-colors">
-                    <Input
-                      placeholder="Type your message..."
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-                      className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
-                    />
-                    <Button
-                      onClick={sendMessage}
-                      size="icon"
-                      disabled={!newMessage.trim()}
-                      className="h-9 w-9 rounded-full shrink-0"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex gap-2 items-end bg-muted/50 rounded-2xl px-4 py-2 border border-border/50 focus-within:border-primary/50 transition-colors">
+                      <Textarea
+                        aria-label="Message"
+                        placeholder={composerPlaceholder}
+                        value={newMessage}
+                        rows={1}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage() }
+                        }}
+                        className="min-h-0 max-h-40 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 py-1.5"
+                      />
+                      <Button
+                        onClick={sendMessage}
+                        size="icon"
+                        aria-label={textingTarget?.mode === "text" ? "Send and text" : "Send"}
+                        disabled={!newMessage.trim()}
+                        className="h-9 w-9 rounded-full shrink-0"
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {textPreview && (
+                      <div className="mt-2 px-1 flex items-start justify-between gap-4 text-xs">
+                        <p className="text-muted-foreground min-w-0">
+                          <span className="font-medium text-foreground">Client's phone shows: </span>
+                          <span className="line-clamp-2 break-words">{textPreview.text}</span>
+                        </p>
+                        {textPreview.parts > 1 && (
+                          <span className="shrink-0 font-medium text-warning tabular">Sends as {textPreview.parts} texts</span>
+                        )}
+                      </div>
+                    )}
+                    <p className="mt-1 px-1 text-[11px] text-muted-foreground">Enter to send, Shift+Enter for a new line</p>
                   </div>
                 </div>
               </div>
