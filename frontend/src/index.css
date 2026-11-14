@@ -41,43 +41,59 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --color-cta: var(--cta);
   --color-cta-foreground: var(--cta-foreground);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-ink: var(--ink);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: "Atkinson Hyperlegible Next Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(0.985 0.005 240);
-  --foreground: oklch(0.145 0 0);
-  --cta: oklch(0.51 0.13 60);
-  --cta-foreground: oklch(0.985 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.379 0.157 264.5);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.379 0.157 264.5);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* DSS Client Portal tokens
+     Ink navy and action blue are shared with the LBAssureSign retainer app.
+     Bronze is the firm's brand color from dsslaw.com: brand mark and the
+     client's current case stage only. Green, amber and red only carry meaning. */
+  --ink: #1B2A41;          /* headings, header */
+  --brand: #B07A3B;        /* firm bronze: marks and fills, never body text */
+  --brand-strong: #8A5A22; /* bronze when it has to be text (passes contrast) */
+  --success: #2E7D4F;      /* done */
+  --warning: #8A5A0B;      /* waiting on you */
+
+  --radius: 0.5rem;
+  --background: #F5F7FA;
+  --foreground: #1B2A41;
+  --cta: #1F5FBF;
+  --cta-foreground: #FFFFFF;
+  --card: #FFFFFF;
+  --card-foreground: #1B2A41;
+  --popover: #FFFFFF;
+  --popover-foreground: #1B2A41;
+  --primary: #1F5FBF;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EAEFF5;
+  --secondary-foreground: #1B2A41;
+  --muted: #EEF2F6;
+  --muted-foreground: #566273;
+  --accent: #E8EEF8;
+  --accent-foreground: #1B2A41;
+  --destructive: #B42318;
+  --border: #DCE3EB;
+  --input: #C3CEDA;
+  --ring: #1F5FBF;
+  --chart-1: #1F5FBF;
+  --chart-2: #B07A3B;
+  --chart-3: #2E7D4F;
+  --chart-4: #1B2A41;
+  --chart-5: #8C99AA;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #1B2A41;
+  --sidebar-primary: #1F5FBF;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E8EEF8;
+  --sidebar-accent-foreground: #1B2A41;
+  --sidebar-border: #DCE3EB;
+  --sidebar-ring: #1F5FBF;
 }
 
 .dark {
@@ -121,9 +137,33 @@
     @apply border-border outline-ring/50;
   }
   html {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
   }
   body {
     @apply bg-background text-foreground;
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+  h1, h2, h3, h4 {
+    color: var(--ink);
+    line-height: 1.25;
+    letter-spacing: -0.005em;
+    text-wrap: balance;
+  }
+  /* Dates, amounts and case numbers line up in columns */
+  time, td, .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Visible keyboard focus everywhere */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
