@@ -189,6 +189,12 @@ export default function CaseDetail() {
     ws.current.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
+        if (msg.type === "sms_status") {
+          // Text delivery update for a message already on screen
+          setMessages((prev) => prev.map((m) => m.id === msg.message_id
+            ? { ...m, sms_status: msg.sms_status, sms_error: msg.sms_error } : m))
+          return
+        }
         setMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev
           return [...prev, msg]

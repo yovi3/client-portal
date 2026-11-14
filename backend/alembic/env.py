@@ -5,6 +5,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
+from app.config import get_settings
 from app.database import Base
 from app.models import *
 
@@ -17,6 +18,11 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Migrate the same database the app uses (DATABASE_URL / backend .env), not the
+# placeholder in alembic.ini. Without this, "alembic upgrade head" always ran
+# against a local app.db file, even in production. "%" is escaped for configparser.
+config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
 
 # add your model's MetaData object here
 # for 'autogenerate' support

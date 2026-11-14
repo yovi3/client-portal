@@ -29,6 +29,8 @@ class ClientProfileBase(BaseModel):
     state: Optional[str] = None
     zip_code: Optional[str] = None
     country: Optional[str] = None
+    # Read-only for staff: changes only when the client texts STOP or START.
+    sms_opted_out: Optional[bool] = False
 
     class Config:
         from_attributes = True
@@ -226,6 +228,8 @@ class Message(MessageBase):
     is_read: bool 
     channel: str 
     message_type: str # NEW: For frontend display logic
+    sms_status: Optional[str] = None
+    sms_error: Optional[str] = None
     
     sender_user: Optional[User] = None 
     

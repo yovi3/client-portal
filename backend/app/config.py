@@ -71,6 +71,11 @@ class Settings:
         self.twilio_account_sid = _get_env("TWILIO_ACCOUNT_SID")
         self.twilio_auth_token = _get_env("TWILIO_AUTH_TOKEN")
         self.twilio_phone_number = _get_env("TWILIO_PHONE_NUMBER")
+        # Preferred: send through the Twilio Messaging Service (MG...). The firm's number
+        # belongs to the "DSS Client Portal" service, and sending "from" the number
+        # directly fails with error 21606 while it is in a service.
+        self.twilio_messaging_service_sid = _get_env("TWILIO_MESSAGING_SERVICE_SID")
+        self.sms_sender_name = _get_env("SMS_SENDER_NAME", "Davis, Saperstein & Salomon")
         twilio_validate_signature = (_get_env("TWILIO_VALIDATE_SIGNATURE", "true") or "true").strip().lower()
         self.twilio_validate_signature = twilio_validate_signature in {"1", "true", "yes", "on"}
 

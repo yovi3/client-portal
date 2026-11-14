@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from typing import Dict, List
 
 from .. import database, schemas, crud, auth
-from ..services.sms import send_sms
+from ..services import texting
 from ..config import get_settings
-from .utils import ensure_case_access
+from .utils import ensure_case_access, PERSONNEL_ROLES
 
 
 router = APIRouter(tags=["ws"])
@@ -136,20 +136,17 @@ async def websocket_endpoint(
             if not db_message_full:
                 continue
 
-            broadcast_data = schemas.Message.from_orm(db_message_full).model_dump_json()
-            await manager.broadcast(broadcast_data, room)
+            # A message from the firm's staff is also texted to the client. The text
+            # status is set before the message goes out, so screens show it right away.
+            sender = db_message_full.sender_user
+            plan = None
+            if sender and sender.role in PERSONNEL_ROLES:
+                plan = texting.prepare_client_text(db, db_message_full)
+                db.refresh(db_message_full)
 
-            if db_message_full.sender_user and db_message_full.sender_user.role == "lawyer":
-                case = crud.get_case_by_id(db, case_id)
-                primary_client = case.clients[0] if case.clients else None
-                if (
-                    primary_client
-                    and primary_client.client_profile
-                    and primary_client.client_profile.phone
-                ):
-                    client_phone = primary_client.client_profile.phone
-                    sms_body = f"Message regarding '{case.title}':\n{db_message_full.content}"
-                    send_sms(to_number=client_phone, body=sms_body)
+            await manager.broadcast(texting.message_event(db_message_full), room)
+            if plan:
+                texting.start_delivery(plan, manager.broadcast)
     except WebSocketDisconnect:
         manager.disconnect(websocket, room)
     except Exception:

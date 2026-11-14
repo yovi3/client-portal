@@ -9,6 +9,7 @@ from .. import database, models, schemas, crud
 from ..deps import get_current_user
 from .utils import PERSONNEL_ROLES, require_role
 from ..config import get_settings
+from ..services import texting
 from .ws import manager
 
 
@@ -75,17 +76,44 @@ async def twilio_sms_webhook(
     if not client_phone or not sms_body:
         raise HTTPException(status_code=400, detail="Missing 'From' or 'Body' data")
 
-    client = crud.get_user_by_phone(db, client_phone)
-    client_id = client.id if client else None
-    created = crud.create_awaiting_sms(db, phone=client_phone, body=sms_body, client_id=client_id)
-    logger.info(
-        "Inbound SMS stored in inbox. awaiting_sms_id=%s from=%s client_id=%s",
-        created.id,
-        client_phone,
-        client_id,
+    message = texting.handle_inbound(
+        db,
+        from_number=client_phone,
+        body=sms_body,
+        sid=payload.get("MessageSid"),
+        opt_out_type=payload.get("OptOutType"),  # sent by Twilio Advanced Opt-Out
     )
+    if message:
+        logger.info("Inbound SMS added to case %s as message %s", message.case_id, message.id)
+        await manager.broadcast(texting.message_event(message), f"case_{message.case_id}")
+    else:
+        logger.info("Inbound SMS from %s held in the SMS inbox (or duplicate)", client_phone)
 
     return Response(content="<Response></Response>", media_type="application/xml")
+
+
+@router.post("/api/twilio/webhook/status")
+async def twilio_status_webhook(
+    request: Request,
+    db: Session = Depends(database.get_db),
+):
+    """Delivery reports for texts we sent (Twilio status callback)."""
+    if not settings.twilio_auth_token:
+        raise HTTPException(status_code=500, detail="Twilio auth token not configured")
+
+    form_data = await request.form()
+    payload = {key: value for key, value in form_data.multi_items()}
+    if settings.twilio_validate_signature:
+        if not _validate_twilio_signature(request, payload, request.headers.get("X-Twilio-Signature", "")):
+            logger.warning("Twilio signature validation failed for status callback. url=%s", str(request.url))
+            raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+
+    sid = payload.get("MessageSid")
+    if sid:
+        message = texting.apply_status_report(db, sid, payload.get("MessageStatus"), payload.get("ErrorCode"))
+        if message:
+            await manager.broadcast(texting.status_event(message), f"case_{message.case_id}")
+    return Response(status_code=204)
 
 
 def _broadcast_case_message(message: models.Message):

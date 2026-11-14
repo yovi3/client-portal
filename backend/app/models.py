@@ -156,6 +156,9 @@ class ClientProfile(Base):
     zip_code = Column(String, nullable=True)
     country = Column(String, nullable=True)
     active_cases = Column(Integer, default=0)
+    # Set when the client texts STOP (or similar); cleared when they text START.
+    sms_opted_out = Column(Boolean, default=False, nullable=False, server_default="0")
+    sms_opted_out_at = Column(DateTime, nullable=True)
     joined_date = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     user = relationship("User", back_populates="client_profile")
 
@@ -223,7 +226,14 @@ class Message(Base):
     message_type = Column(String, default='text')
     
     channel = Column(String, default="portal", nullable=False)
-    
+
+    # Text-message delivery for this message (None = not texted).
+    # Outbound: sending, sent, delivered, failed, opted_out, no_phone, simulated.
+    # Inbound texts from a client: received.
+    sms_status = Column(String, nullable=True)
+    sms_sid = Column(String, unique=True, index=True, nullable=True)  # Twilio SM... id
+    sms_error = Column(String, nullable=True)  # plain-language reason when it failed
+
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
