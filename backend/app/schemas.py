@@ -532,3 +532,67 @@ class Lead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ========================================================
+# Conversations (one per phone number; linked to a lead, a case, or neither)
+# ========================================================
+
+class ConversationLead(BaseModel):
+    id: int
+    lead_number: str
+    name: Optional[str] = None
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class ConversationCase(BaseModel):
+    id: int
+    title: Optional[str] = None
+    lawbase_case_number: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ConversationLastMessage(BaseModel):
+    content: str
+    timestamp: Optional[datetime] = None
+    inbound: bool
+
+
+class ConversationSummary(BaseModel):
+    id: int
+    phone: str
+    contact_name: Optional[str] = None
+    kind: str  # case, lead or unassigned
+    lead: Optional[ConversationLead] = None
+    case: Optional[ConversationCase] = None
+    last_message: Optional[ConversationLastMessage] = None
+    last_message_at: Optional[datetime] = None
+    message_count: int = 0
+    sms_opted_out: bool = False
+
+
+class ConversationCounts(BaseModel):
+    unassigned: int
+
+
+class NewLeadForConversation(BaseModel):
+    lead_number: str = Field(min_length=1, max_length=50)
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+    assigned_user_id: Optional[int] = None
+
+
+class ConversationLinkRequest(BaseModel):
+    """Exactly one of: an existing lead, a new lead, or a case."""
+    lead_id: Optional[int] = None
+    new_lead: Optional[NewLeadForConversation] = None
+    case_id: Optional[int] = None
+
+
+class MoveToCaseRequest(BaseModel):
+    case_id: int

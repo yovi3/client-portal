@@ -18,7 +18,7 @@ import { PERSONNEL_ROLES } from "@/pages/admin/utils";
 // LeadBase lead or a LawBase case; texts that belong to neither wait in
 // "Needs assigning". Team chat is internal and never texted, so it sits apart.
 const STAFF_NAV = [
-  { key: "assign", name: "Needs assigning", icon: Inbox, to: "/case-inbox" },
+  { key: "assign", name: "Needs assigning", icon: Inbox, to: "/needs-assigning" },
   { key: "leads", name: "Leads", icon: Filter, to: "/leads" },
   { key: "cases", name: "Cases", icon: Briefcase, to: "/messages?view=cases" },
 ];
@@ -42,15 +42,20 @@ export default function Sidebar({ onNavigate }) {
   const isStaff = PERSONNEL_ROLES.includes(user?.role);
   const [needsAssigning, setNeedsAssigning] = useState(0);
 
-  // How many texts are waiting to be linked to a lead or case.
+  // How many numbers are waiting to be linked to a lead or case. Refreshed on every
+  // page change, when Needs assigning links or dismisses one, and every 30 seconds.
   useEffect(() => {
     if (!isStaff) return;
     let cancelled = false;
-    apiFetch("/sms/inbox/threads")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((threads) => { if (!cancelled) setNeedsAssigning(Array.isArray(threads) ? threads.length : 0); })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    const refresh = () =>
+      apiFetch("/conversations/counts")
+        .then((res) => (res.ok ? res.json() : { unassigned: 0 }))
+        .then((data) => { if (!cancelled) setNeedsAssigning(data.unassigned || 0); })
+        .catch(() => {});
+    refresh();
+    window.addEventListener("conversations-changed", refresh);
+    const timer = setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 30_000);
+    return () => { cancelled = true; window.removeEventListener("conversations-changed", refresh); clearInterval(timer); };
   }, [isStaff, location.pathname]);
 
   const view = new URLSearchParams(location.search).get("view") || "cases";

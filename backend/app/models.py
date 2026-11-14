@@ -297,6 +297,11 @@ class Conversation(Base):
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     last_message_at = Column(DateTime, nullable=True, index=True)
+    # The number texted STOP. Kept here because leads and unknown numbers have no profile.
+    sms_opted_out = Column(Boolean, default=False, nullable=False, server_default="0")
+    sms_opted_out_at = Column(DateTime, nullable=True)
+    # Staff marked it "Not related" (wrong number, spam). A new text brings it back.
+    dismissed_at = Column(DateTime, nullable=True)
 
     lead = relationship("Lead")
     case = relationship("Case")

@@ -8,7 +8,7 @@ import Clients from "@/pages/Clients";
 import Documents from "@/pages/Documents";
 import Messages from "@/pages/Messages";
 import Leads from "@/pages/Leads";
-import CaseInbox from "@/pages/CaseInbox";
+import NeedsAssigning from "@/pages/NeedsAssigning";
 import AzureCallback from './pages/AzureCallback'
 import SmsLandingPage from './pages/SmsLandingPage'
 import CaseDetail from '@/pages/CaseDetail'
@@ -35,7 +35,9 @@ export default function App() {
         <Route path="/documents" element={<RequireAuth><Documents /></RequireAuth>} />
         <Route path="/messages" element={<RequireAuth><Messages /></RequireAuth>} />
         <Route path="/leads" element={<RequireRole allowedRoles={personnelRoles}><Leads /></RequireRole>} />
-        <Route path="/case-inbox" element={<RequireRole allowedRoles={personnelRoles}><CaseInbox /></RequireRole>} />
+        <Route path="/needs-assigning" element={<RequireRole allowedRoles={personnelRoles}><NeedsAssigning /></RequireRole>} />
+        {/* The old SMS inbox; its texts now live in conversations. */}
+        <Route path="/case-inbox" element={<Navigate to="/needs-assigning" replace />} />
         <Route path="/auth/callback" element={<AzureCallback />} />
         <Route path="/requests/:token" element={<SmsLandingPage />} />
         <Route path="/cases/:id" element={<RequireAuth><CaseDetail /></RequireAuth>} />

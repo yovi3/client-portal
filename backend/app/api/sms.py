@@ -83,11 +83,13 @@ async def twilio_sms_webhook(
         sid=payload.get("MessageSid"),
         opt_out_type=payload.get("OptOutType"),  # sent by Twilio Advanced Opt-Out
     )
-    if message:
+    if message and message.case_id:
         logger.info("Inbound SMS added to case %s as message %s", message.case_id, message.id)
         await manager.broadcast(texting.message_event(message), f"case_{message.case_id}")
+    elif message:
+        logger.info("Inbound SMS added to conversation %s (lead %s)", message.conversation_id, message.lead_id)
     else:
-        logger.info("Inbound SMS from %s held in the SMS inbox (or duplicate)", client_phone)
+        logger.info("Inbound SMS from %s was a repeat delivery; ignored", client_phone)
 
     return Response(content="<Response></Response>", media_type="application/xml")
 
