@@ -223,13 +223,15 @@ class MessageCreate(MessageBase):
 class Message(MessageBase):
     id: int
     timestamp: datetime
-    case_id: int
-    sender_id: int
+    case_id: Optional[int] = None    # empty for lead texts and unassigned numbers
+    sender_id: Optional[int] = None  # empty when the sender has no portal account
     is_read: bool 
     channel: str 
     message_type: str # NEW: For frontend display logic
     sms_status: Optional[str] = None
     sms_error: Optional[str] = None
+    conversation_id: Optional[int] = None
+    lead_id: Optional[int] = None
     
     sender_user: Optional[User] = None 
     

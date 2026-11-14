@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, List
 
 from .. import database, schemas, crud, auth
-from ..services import texting
+from ..services import conversations, texting
 from ..config import get_settings
 from .utils import ensure_case_access, PERSONNEL_ROLES
 
@@ -135,6 +135,7 @@ async def websocket_endpoint(
             db_message_full = crud.get_message_by_id(db, db_message_simple.id)
             if not db_message_full:
                 continue
+            conversations.attach_message(db, db_message_full)
 
             # A message from the firm's staff is also texted to the client. The text
             # status is set before the message goes out, so screens show it right away.

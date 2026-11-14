@@ -234,9 +234,17 @@ class Message(Base):
     sms_sid = Column(String, unique=True, index=True, nullable=True)  # Twilio SM... id
     sms_error = Column(String, nullable=True)  # plain-language reason when it failed
 
-    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
-    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # The thread this message belongs to (one per phone number).
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True, index=True)
+    # The matter it is logged against. A message can belong to a case, a lead, or
+    # (for a text from an unknown number) neither yet.
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True)
+    # Empty for a text from someone who has no portal account (a lead, an unknown number).
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
+    conversation = relationship("Conversation", back_populates="messages")
+    lead = relationship("Lead")
     case = relationship("Case", back_populates="messages")
     sender_user = relationship("User", back_populates="sent_messages")
     
@@ -251,6 +259,58 @@ class Message(Base):
 # =========================================================================
 # 4. DIRECT MESSAGES (user-to-user, not tied to a case)
 # =========================================================================
+
+class Lead(Base):
+    """A LeadBase lead. Typed in by staff for now; filled in by the robo bridge later."""
+    __tablename__ = "leads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_number = Column(String, unique=True, index=True, nullable=False)  # LeadBase lead ID
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    phone = Column(String, index=True, nullable=True)  # E.164
+    status = Column(String, nullable=False, default="open", server_default="open")  # open, signed, closed
+    assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+    assigned_user = relationship("User", foreign_keys=[assigned_user_id])
+
+    @property
+    def name(self):
+        return " ".join(p for p in [self.first_name, self.last_name] if p) or None
+
+
+class Conversation(Base):
+    """Every text thread is with one phone number.
+
+    It is linked to the matter it is about: a case, a lead, or neither yet
+    ("Needs assigning"). When a lead signs, case_id is set and lead_id stays,
+    so the history of how the conversation started is kept.
+    """
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    phone = Column(String, unique=True, index=True, nullable=False)  # E.164
+    contact_name = Column(String, nullable=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=True, index=True)
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    last_message_at = Column(DateTime, nullable=True, index=True)
+
+    lead = relationship("Lead")
+    case = relationship("Case")
+    messages = relationship("Message", back_populates="conversation")
+
+    @property
+    def kind(self):
+        """Which list it shows in: case, lead, or unassigned."""
+        if self.case_id:
+            return "case"
+        if self.lead_id:
+            return "lead"
+        return "unassigned"
+
 
 class DirectMessage(Base):
     __tablename__ = "direct_messages"

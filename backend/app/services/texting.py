@@ -18,6 +18,7 @@ from typing import Awaitable, Callable, Optional
 from sqlalchemy.orm import Session
 
 from .. import crud, database, models, schemas
+from . import conversations
 from .sms import TWILIO_ERROR_UNSUBSCRIBED, build_client_text, describe_error, send_sms
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,7 @@ def handle_inbound(db: Session, from_number: str, body: str, sid: Optional[str],
     open_cases = [c for c in (client.client_cases if client else []) if (c.status or "").lower() not in CLOSED_CASE_STATUSES]
     if len(open_cases) != 1:
         # Unknown number, or a client with several open cases: staff decide in the inbox.
+        # (Task 1.6 replaces this with routing by conversation.)
         crud.create_awaiting_sms(db, phone=from_number, body=body, client_id=client.id if client else None)
         return None
 
@@ -179,4 +181,8 @@ def handle_inbound(db: Session, from_number: str, body: str, sid: Optional[str],
     )
     db.add(message)
     db.commit()
+    conversations.attach_message(
+        db, message,
+        conversations.get_or_create(db, from_number, contact_name=client.name, case_id=open_cases[0].id),
+    )
     return crud.get_message_by_id(db, message.id)

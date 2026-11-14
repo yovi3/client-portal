@@ -9,7 +9,7 @@ from .. import database, models, schemas, crud
 from ..deps import get_current_user
 from .utils import PERSONNEL_ROLES, require_role
 from ..config import get_settings
-from ..services import texting
+from ..services import conversations, texting
 from .ws import manager
 
 
@@ -145,6 +145,10 @@ async def _assign_inbox_sms(
         channel="sms",
     )
     db_message_simple = crud.create_message(db, message=message_schema)
+    conversations.attach_message(
+        db, db_message_simple,
+        conversations.get_or_create(db, awaiting_sms.client_phone_number, case_id=case.id),
+    )
     crud.update_awaiting_sms_status(
         db,
         sms_id,

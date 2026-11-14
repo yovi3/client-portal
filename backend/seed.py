@@ -133,6 +133,11 @@ def seed_database():
         )
         crud.create_message(db=db, message=msg_in_2)
         
+        # Put the seeded case messages into per-phone conversations, as the app does.
+        from app.services.conversations import attach_all_case_messages
+        attached = attach_all_case_messages(db)
+        print(f"Attached {attached} messages to conversations.")
+
         print("\nDatabase seeding successful! (M2M ready for testing.)")
 
     except HTTPException as e:
