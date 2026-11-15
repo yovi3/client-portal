@@ -534,6 +534,13 @@ class Lead(BaseModel):
     last_message: Optional["ConversationLastMessage"] = None
     last_message_at: Optional[datetime] = None
     sms_opted_out: bool = False
+    source: str = "manual"
+    lead_type: Optional[str] = None
+    lb_status: Optional[str] = None
+    lb_current_status: Optional[str] = None
+    assigned_name: Optional[str] = None
+    language: Optional[str] = None
+    synced_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -716,3 +723,39 @@ class PublicFileRequest(BaseModel):
 class AppearanceUpdate(BaseModel):
     theme: Optional[Literal["light", "dark", "system"]] = None
     text_size: Optional[Literal["normal", "large"]] = None
+
+
+# ========================================================
+# Robo bridge (Phase 2)
+# ========================================================
+
+class BridgeLead(BaseModel):
+    """One lead as dssc.GetLeads returns it."""
+    serial: int
+    lead_number: str = Field(min_length=1, max_length=50)
+    lead_type: Optional[str] = None
+    status: Optional[str] = None
+    current_status: Optional[str] = None
+    security_level: Optional[int] = None
+    assigned_login: Optional[str] = None
+    assigned_name: Optional[str] = None
+    assigned_email: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    language: Optional[str] = None
+
+
+class BridgeLeadBatch(BaseModel):
+    leads: List[BridgeLead] = Field(max_length=5000)
+
+
+class BridgeLeadResult(BaseModel):
+    received: int
+    created: int
+    updated: int
+    merged_with_typed_in: int
+    unchanged: int
+    conversations_created: int
+    skipped: List[str] = []

@@ -275,6 +275,19 @@ class Lead(Base):
     phone = Column(String, index=True, nullable=True)  # E.164
     status = Column(String, nullable=False, default="open", server_default="open")  # open, signed, closed
     assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Filled by the robo bridge from LeadBase (PB0 and PB2). Empty for leads typed in by hand.
+    lawbase_serial = Column(Integer, unique=True, index=True, nullable=True)  # PB0.Serial, LawBase's own key
+    source = Column(String, nullable=False, default="manual", server_default="manual")  # manual or lawbase
+    lead_type = Column(String, nullable=True)        # AUTO, W/C, FALLDOWN...
+    lb_status = Column(String, nullable=True)        # LeadBase Status: New, In Progress, Accepted, Rejected, Closed
+    lb_current_status = Column(String, nullable=True)  # LeadBase Current Status (the reason)
+    security_level = Column(Integer, nullable=True)  # PB0.Security, decides who may see it (task 2.7)
+    assigned_login = Column(String, nullable=True)   # LawBase login of the assigned person
+    assigned_name = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    language = Column(String, nullable=True)
+    synced_at = Column(DateTime, nullable=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 

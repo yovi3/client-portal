@@ -74,12 +74,21 @@ def list_assignable_staff(
 
 @router.get("/leads", response_model=List[schemas.Lead])
 def list_leads(
+    show: str = "active",
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    # Every staff member sees every lead for now; LawBase groups decide this in Phase 2 (task 2.7).
+    """Leads still being worked (show=active, the default) or every lead (show=all).
+
+    Active means open in the portal: New or In Progress in LeadBase, or typed in by hand
+    and not marked signed or closed.
+    """
+    # Every staff member sees every lead for now; LawBase security levels decide this in task 2.7.
     require_role(current_user, PERSONNEL_ROLES)
-    leads = db.query(models.Lead).order_by(models.Lead.created_at.desc(), models.Lead.id.desc()).all()
+    q = db.query(models.Lead)
+    if show != "all":
+        q = q.filter(models.Lead.status == "open")
+    leads = q.order_by(models.Lead.created_at.desc(), models.Lead.id.desc()).all()
     convs = db.query(models.Conversation).all()
     by_phone = {c.phone: c for c in convs}
     by_lead = {}
@@ -155,6 +164,8 @@ def update_lead(
     lead = db.get(models.Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found.")
+    if lead.source == "lawbase":
+        raise HTTPException(status_code=409, detail="This lead comes from LeadBase. Change it in LeadBase; the portal updates within a minute.")
     changes = payload.model_dump(exclude_unset=True)
     if "status" in changes and changes["status"] not in LEAD_STATUSES:
         raise HTTPException(status_code=400, detail="Status must be open, signed or closed.")

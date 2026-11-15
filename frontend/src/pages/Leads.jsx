@@ -44,7 +44,7 @@ const shortTime = (iso) => {
 // so leads are never mistaken for cases.
 export function LeadTag({ number }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground tabular">
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-border bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground tabular">
       <Filter className="h-3 w-3" aria-hidden />
       Lead {number}
     </span>
@@ -68,7 +68,7 @@ export default function Leads() {
 
   const loadLeads = useCallback(async () => {
     try {
-      const res = await apiFetch("/leads");
+      const res = await apiFetch(view === "list" ? "/leads?show=all" : "/leads");
       if (!res.ok) throw new Error("Leads couldn't be loaded.");
       setLeads(await res.json());
       setLoadError(null);
@@ -77,7 +77,7 @@ export default function Leads() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     loadLeads();
@@ -125,8 +125,8 @@ export default function Leads() {
             <h1 className="text-[1.375rem] font-bold tracking-tight">Leads</h1>
             <p className="text-sm text-muted-foreground">
               {view === "list"
-                ? "Every lead in the portal. Typed in by hand until LeadBase is connected."
-                : "Text LeadBase leads. Your messages go out as texts, and replies show up here."}
+                ? "Every lead in the portal, including ones no longer New or In Progress in LeadBase."
+                : "LeadBase leads that are New or In Progress. Your messages go out as texts, and replies show up here."}
             </p>
           </div>
           <div className="flex gap-2">
@@ -172,6 +172,7 @@ export default function Leads() {
                         </div>
                         <div className="mt-1 flex items-center gap-2">
                           <LeadTag number={lead.lead_number} />
+                          {lead.lead_type && <span className="text-[0.6875rem] text-muted-foreground">{lead.lead_type}</span>}
                           {lead.status !== "open" && <span className="text-[0.6875rem] text-muted-foreground">{STATUS_LABEL[lead.status]}</span>}
                         </div>
                         <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -195,10 +196,13 @@ export default function Leads() {
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="truncate text-base font-semibold">{selected.name || "No name"}</h2>
                         <LeadTag number={selected.lead_number} />
-                        {selected.status !== "open" && <span className="text-xs text-muted-foreground">{STATUS_LABEL[selected.status]}</span>}
+                        {selected.lead_type && <span className="text-xs text-muted-foreground">{selected.lead_type}</span>}
+                        {selected.lb_status && <span className="rounded bg-muted px-1.5 py-0.5 text-xs">{selected.lb_status}</span>}
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Assigned to {selected.assigned_user?.name || "nobody"}
+                        Assigned to {selected.assigned_user?.name || selected.assigned_name || "nobody"}
+                        {selected.source === "lawbase" ? ". From LeadBase" : ". Typed in by hand"}
+                        {selected.language && selected.language.toLowerCase() !== "english" ? `. Speaks ${selected.language}` : ""}
                       </p>
                       {selected.phone && !selected.sms_opted_out && (
                         <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -218,7 +222,9 @@ export default function Leads() {
                           <Button size="sm" variant="outline" onClick={() => setSending(true)}><FileUp className="h-4 w-4" /> Send documents</Button>
                         </>
                       )}
-                      <Button variant="outline" size="sm" onClick={() => setEditing(selected)}><Pencil className="h-4 w-4" /> Edit lead</Button>
+                      {selected.source !== "lawbase" && (
+                        <Button variant="outline" size="sm" onClick={() => setEditing(selected)}><Pencil className="h-4 w-4" /> Edit lead</Button>
+                      )}
                     </div>
                   </div>
 
@@ -237,9 +243,11 @@ export default function Leads() {
                       <Smartphone className="h-8 w-8 text-muted-foreground" aria-hidden />
                       <h3 className="mt-3 text-base font-semibold">{selected.phone ? "This number can't be texted from here" : "No mobile number yet"}</h3>
                       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                        {selected.phone_note || "Add the lead's mobile number to start texting."}
+                        {selected.phone_note || (selected.source === "lawbase"
+                          ? "Add the client's mobile number in LeadBase. It shows up here within a minute."
+                          : "Add the lead's mobile number to start texting.")}
                       </p>
-                      {!selected.phone && <Button className="mt-4" onClick={() => setEditing(selected)}><Pencil className="h-4 w-4" /> Add a number</Button>}
+                      {!selected.phone && selected.source !== "lawbase" && <Button className="mt-4" onClick={() => setEditing(selected)}><Pencil className="h-4 w-4" /> Add a number</Button>}
                     </div>
                   )}
                 </>
@@ -293,24 +301,30 @@ function LeadTable({ leads, loading, onEdit }) {
             <th className="px-4 py-2.5 font-medium">Lead</th>
             <th className="px-4 py-2.5 font-medium">Name</th>
             <th className="px-4 py-2.5 font-medium">Mobile</th>
+            <th className="px-4 py-2.5 font-medium">Type</th>
             <th className="px-4 py-2.5 font-medium">Assigned to</th>
-            <th className="px-4 py-2.5 font-medium">Status</th>
+            <th className="px-4 py-2.5 font-medium">LeadBase status</th>
+            <th className="px-4 py-2.5 font-medium">Source</th>
             <th className="px-4 py-2.5 font-medium">Added</th>
           </tr>
         </thead>
         <tbody>
           {leads.map((lead) => (
-            <tr key={lead.id} onClick={() => onEdit(lead)} className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50">
+            <tr key={lead.id} onClick={() => lead.source !== "lawbase" && onEdit(lead)} className={`border-b border-border last:border-0 hover:bg-muted/50 ${lead.source !== "lawbase" ? "cursor-pointer" : ""}`}>
               <td className="px-4 py-3">
-                <button type="button" className="text-left" onClick={(e) => { e.stopPropagation(); onEdit(lead); }}><LeadTag number={lead.lead_number} /></button>
+                {lead.source !== "lawbase"
+                  ? <button type="button" className="text-left" onClick={(e) => { e.stopPropagation(); onEdit(lead); }}><LeadTag number={lead.lead_number} /></button>
+                  : <LeadTag number={lead.lead_number} />}
               </td>
               <td className="px-4 py-3 font-medium">{lead.name || <span className="text-muted-foreground">No name</span>}</td>
               <td className="px-4 py-3">
                 {lead.phone ? <span className="tabular">{formatPhone(lead.phone)}</span> : <span className="text-muted-foreground">None</span>}
                 {lead.phone_note && <p className="mt-0.5 flex items-center gap-1 text-xs text-warning"><AlertCircle className="h-3 w-3 shrink-0" /> {lead.phone_note}</p>}
               </td>
-              <td className="px-4 py-3">{lead.assigned_user?.name || <span className="text-muted-foreground">Unassigned</span>}</td>
-              <td className="px-4 py-3"><span className={lead.status === "open" ? "font-medium" : "text-muted-foreground"}>{STATUS_LABEL[lead.status] || lead.status}</span></td>
+              <td className="px-4 py-3 text-muted-foreground">{lead.lead_type || ""}</td>
+              <td className="px-4 py-3">{lead.assigned_user?.name || lead.assigned_name || <span className="text-muted-foreground">Unassigned</span>}</td>
+              <td className="px-4 py-3"><span className={lead.status === "open" ? "font-medium" : "text-muted-foreground"}>{lead.lb_status || STATUS_LABEL[lead.status] || lead.status}</span></td>
+              <td className="px-4 py-3 text-muted-foreground">{lead.source === "lawbase" ? "LeadBase" : "Typed in"}</td>
               <td className="px-4 py-3 text-muted-foreground"><time>{formatDate(lead.created_at)}</time></td>
             </tr>
           ))}

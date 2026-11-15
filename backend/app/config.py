@@ -80,6 +80,8 @@ class Settings:
         # them on. The first rollout is the intake team, working with leads only.
         # Where uploaded files are kept. Local disk on robo; Azure private storage before go-live (task 4.5).
         self.upload_directory = _get_env("UPLOAD_DIRECTORY", "uploads")
+        # The robo bridge proves who it is with this key (X-Bridge-Key header). Empty = bridge refused.
+        self.bridge_api_key = _get_env("BRIDGE_API_KEY", "")
         self.cases_enabled = (_get_env("CASES_ENABLED", "false") or "false").strip().lower() in {"1", "true", "yes", "on"}
         twilio_validate_signature = (_get_env("TWILIO_VALIDATE_SIGNATURE", "true") or "true").strip().lower()
         self.twilio_validate_signature = twilio_validate_signature in {"1", "true", "yes", "on"}

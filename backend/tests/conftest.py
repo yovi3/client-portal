@@ -20,6 +20,7 @@ os.environ.update({
     "TWILIO_AUTH_TOKEN": "test-auth-token",  # lets the webhook signature check run
     "TWILIO_VALIDATE_SIGNATURE": "true",
     "CASES_ENABLED": "false",
+    "BRIDGE_API_KEY": "test-bridge-key",
     "CLIENT_BASE_URL": "http://portal.test",
     "AZURE_CLIENT_ID": "not-set",
     "AZURE_TENANT_ID": "not-set",
