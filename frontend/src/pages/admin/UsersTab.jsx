@@ -197,7 +197,7 @@ export default function UsersTab({
           </TabsTrigger>
           <TabsTrigger value="invites" className="text-xs gap-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Mail className="h-3 w-3" />Invites
-            <span className={cn("ml-0.5 px-1.5 py-0 text-[10px] h-4 inline-flex items-center rounded-full font-medium", subTab === "invites" ? "bg-muted text-foreground" : "bg-muted text-muted-foreground")}>{invites.length}</span>
+            <span className={cn("ml-0.5 px-1.5 py-0 text-[0.625rem] h-4 inline-flex items-center rounded-full font-medium", subTab === "invites" ? "bg-muted text-foreground" : "bg-muted text-muted-foreground")}>{invites.length}</span>
           </TabsTrigger>
           <TabsTrigger value="roles" className="text-xs gap-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Shield className="h-3 w-3" />Roles
@@ -289,7 +289,7 @@ export default function UsersTab({
                               <td className={tdClass}>
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold text-foreground">{entry.email}</span>
-                                  {isSelf && <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">You</span>}
+                                  {isSelf && <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary">You</span>}
                                 </div>
                               </td>
                             )}

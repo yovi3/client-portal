@@ -53,7 +53,7 @@ export default function Documents() {
     <MainLayout>
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Documents</h1>
+          <h1 className="text-[1.375rem] font-bold tracking-tight text-foreground">Documents</h1>
           <div className="relative max-w-xs w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -89,7 +89,7 @@ export default function Documents() {
                     <span className="truncate">{doc.name}</span>
                     {doc.status && (
                       <span className={cn(
-                        "inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium flex-shrink-0",
+                        "inline-flex items-center rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium flex-shrink-0",
                         STATUS_CLASS[doc.status] || "bg-muted text-muted-foreground border border-border"
                       )}>
                         {doc.status}

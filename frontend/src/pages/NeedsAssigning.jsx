@@ -102,7 +102,7 @@ export default function NeedsAssigning() {
     <MainLayout>
       <div className="p-6 space-y-5">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight">Needs assigning</h1>
+          <h1 className="text-[1.375rem] font-bold tracking-tight">Needs assigning</h1>
           <p className="text-sm text-muted-foreground">
             Texts from numbers that aren't linked to a lead yet. Link each one so its texts are logged in the right place.
           </p>
@@ -157,7 +157,7 @@ export default function NeedsAssigning() {
                   {expanded[conv.id].map((m) => (
                     <li key={m.id} className="rounded-md bg-muted px-3 py-2 text-sm">
                       <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground"><time>{timeOf(m.timestamp)}</time></p>
+                      <p className="mt-0.5 text-[0.6875rem] text-muted-foreground"><time>{timeOf(m.timestamp)}</time></p>
                     </li>
                   ))}
                 </ol>

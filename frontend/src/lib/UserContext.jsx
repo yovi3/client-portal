@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { getStoredUser, setStoredUser, clearStoredUser } from "@/lib/auth";
+import { applyAppearance } from "@/lib/appearance";
 
 const UserContext = createContext(null);
 
@@ -30,6 +31,11 @@ export function UserProvider({ children }) {
     };
     validate();
   }, []);
+
+  // Whoever is signed in sees their own colors and text size.
+  useEffect(() => {
+    if (user) applyAppearance({ theme: user.theme, text_size: user.text_size });
+  }, [user?.theme, user?.text_size]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const logout = useCallback(async () => {
     try {

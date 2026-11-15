@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   PenSquare,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 import NewTextDialog from "@/components/conversation/NewTextDialog";
 import { useAppSettings } from "@/lib/appSettings";
@@ -88,7 +89,7 @@ export default function Sidebar({ onNavigate }) {
         onClick={() => go(item.to)}
         aria-current={active ? "page" : undefined}
         className={`group relative flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
-          active ? "bg-white/12 text-white font-semibold" : "text-white/75 hover:bg-white/8 hover:text-white"
+          active ? "bg-accent text-ink font-semibold" : "text-muted-foreground hover:bg-muted hover:text-foreground"
         }`}
       >
         {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-brand" aria-hidden />}
@@ -96,8 +97,8 @@ export default function Sidebar({ onNavigate }) {
         <span className="flex-1 text-left">{item.name}</span>
         {count > 0 && (
           <span
-            className={`tabular min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-semibold ${
-              item.key === "assign" ? "bg-amber-300 text-ink" : "bg-white/20 text-white"
+            className={`tabular min-w-5 rounded-full px-1.5 py-0.5 text-center text-[0.6875rem] font-semibold ${
+              item.key === "assign" ? "bg-amber-100 text-amber-900 dark:bg-amber-400/20 dark:text-amber-200" : "bg-primary text-primary-foreground"
             }`}
             aria-label={`${count} ${item.key === "assign" ? "waiting" : "unread"}`}
           >
@@ -109,24 +110,14 @@ export default function Sidebar({ onNavigate }) {
   };
 
   return (
-    <aside className="flex h-full w-64 flex-col bg-ink text-white">
-      {/* Firm mark */}
-      <div className="flex items-center gap-3 px-5 pt-6 pb-5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-brand text-[13px] font-bold tracking-wide text-white">
-          DSS
-        </span>
-        <div className="leading-tight">
-          <p className="text-[15px] font-semibold">Messaging</p>
-          <p className="text-[11px] text-white/60">Davis, Saperstein &amp; Salomon</p>
-        </div>
-      </div>
-
+    <aside className="flex h-full w-60 flex-col border-r border-border bg-card text-foreground">
+      {!isStaff && <div className="pt-4" />}
       {isStaff && (
-        <div className="px-3 pb-4">
+        <div className="px-3 pb-4 pt-4">
           <button
             type="button"
             onClick={() => setNewTextOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-white/90"
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             <PenSquare className="h-4 w-4" /> New text
           </button>
@@ -139,30 +130,39 @@ export default function Sidebar({ onNavigate }) {
           {(isStaff ? staffNav : CLIENT_NAV).map((item) => <NavItem key={item.key} item={item} />)}
         </div>
         {isStaff && (
-          <div className="space-y-1 border-t border-white/10 pt-4">
-            <p className="px-3 pb-1 text-[11px] text-white/50">Internal</p>
+          <div className="space-y-1 border-t border-border pt-4">
+            <p className="px-3 pb-1 text-[0.6875rem] font-medium text-muted-foreground">Internal</p>
             {staffInternal.map((item) => <NavItem key={item.key} item={item} />)}
           </div>
         )}
       </nav>
 
       {/* Admin and the signed-in person live at the bottom, out of the daily path. */}
-      <div className="space-y-1 border-t border-white/10 px-3 py-3">
+      <div className="space-y-1 border-t border-border px-3 py-3">
         {user?.role === "admin" && (
-          <NavItem item={{ key: "admin", name: "Admin", icon: Settings, to: "/admin-dashboard" }} />
+          <NavItem item={{ key: "admin", name: "Admin", icon: ShieldCheck, to: "/admin-dashboard" }} />
         )}
         <div className="flex items-center gap-3 rounded-md px-3 py-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/15 text-xs font-semibold">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bar text-xs font-semibold text-white">
             {initialsOf(user?.name)}
           </span>
           <div className="min-w-0 flex-1 leading-tight">
             <p className="truncate text-sm font-medium">{user?.name}</p>
-            <p className="truncate text-[11px] text-white/60">{user?.email}</p>
+            <p className="truncate text-[0.6875rem] text-muted-foreground">{user?.email}</p>
           </div>
           <button
             type="button"
+            onClick={() => go("/settings")}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Settings"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
             onClick={handleLogout}
-            className="rounded-md p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Sign out"
             title="Sign out"
           >

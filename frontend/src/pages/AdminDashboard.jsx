@@ -291,7 +291,7 @@ function AdminDashboardWorkspace() {
         {/* Page header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-[22px] font-bold tracking-tight text-foreground">Admin Dashboard</h1>
+            <h1 className="text-[1.375rem] font-bold tracking-tight text-foreground">Admin Dashboard</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">{user.email} · <span className="text-primary font-medium">{user.role}</span></p>
           </div>
           <Button variant="outline" size="sm" onClick={loadAdminData} disabled={isLoading} className="cursor-pointer">

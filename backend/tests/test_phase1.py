@@ -270,3 +270,14 @@ def test_file_type_comes_from_contents_not_name():
     assert detect_kind(PNG[:32]).content_type == "image/png"
     assert detect_kind(b"\x00\x00\x00\x18ftypheic" + b"0" * 20).content_type == "image/heic"
     assert detect_kind(b"MZ\x90\x00" + b"0" * 28) is None
+
+
+# ---------------------------------------------------------------- appearance settings
+
+def test_appearance_is_saved_per_person(staff, client_user):
+    assert staff.get("/auth/me").json()["theme"] == "system"
+    res = staff.patch("/me/appearance", json={"theme": "dark", "text_size": "large"})
+    assert res.status_code == 200 and res.json()["theme"] == "dark" and res.json()["text_size"] == "large"
+    assert staff.get("/auth/me").json()["theme"] == "dark"
+    assert client_user.get("/auth/me").json()["theme"] == "system"  # someone else's choice is untouched
+    assert staff.patch("/me/appearance", json={"theme": "purple"}).status_code == 422

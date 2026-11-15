@@ -19,7 +19,7 @@ export default function AzureCallback() {
       <div className="w-full max-w-md bg-card shadow-md rounded-lg p-8 text-center">
         <a href="/" className="inline-flex items-center gap-2 mb-6">
           <Scale className="h-8 w-8 text-black" />
-          <span className="text-2xl font-semibold">Injury Case Portal</span>
+          <span className="text-2xl font-semibold">DSS Connect</span>
         </a>
 
         {status === "processing" && (

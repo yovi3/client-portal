@@ -143,7 +143,7 @@ export default function InviteAcceptPage() {
         <div className="mb-6 text-center">
           <a href="/" className="inline-flex items-center gap-2 mb-4">
             <Scale className="h-8 w-8 text-black" />
-            <span className="text-2xl font-semibold">Injury Case Portal</span>
+            <span className="text-2xl font-semibold">My Injury Claim Portal</span>
           </a>
           <h1 className="text-2xl font-bold">Accept Invite</h1>
         </div>

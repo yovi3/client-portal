@@ -16,7 +16,7 @@ export default function Dashboard() {
   return (
     <MainLayout>
       <div className="p-6">
-        <h1 className="text-[22px] font-bold tracking-tight text-foreground">Overview</h1>
+        <h1 className="text-[1.375rem] font-bold tracking-tight text-foreground">Overview</h1>
       </div>
     </MainLayout>
   );

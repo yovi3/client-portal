@@ -73,12 +73,12 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="bg-ink px-5 py-4 text-white">
+      <header className="bg-bar px-5 py-4 text-white">
         <div className="mx-auto flex max-w-lg items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-brand text-[13px] font-bold">DSS</span>
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-brand text-[0.8125rem] font-bold">DSS</span>
           <div className="leading-tight">
-            <p className="font-semibold">{info?.firm_name || "Davis, Saperstein & Salomon"}</p>
-            <p className="flex items-center gap-1 text-xs text-white/70"><Lock className="h-3 w-3" /> {info?.direction === "send" ? "Secure documents" : "Secure document upload"}</p>
+            <p className="font-semibold">My Injury Claim Portal</p>
+            <p className="flex items-center gap-1 text-xs text-white/70"><Lock className="h-3 w-3" /> {info?.firm_name || "Davis, Saperstein & Salomon"}</p>
           </div>
         </div>
       </header>
@@ -100,7 +100,7 @@ export default function UploadPage() {
         {info && info.can_upload && info.direction === "send" && (
           <>
             <h1 className="text-2xl font-bold text-ink">{info.first_name ? `Hi ${info.first_name},` : "Hello,"}</h1>
-            <p className="mt-2 text-[17px] leading-relaxed">{info.note || "Here are your documents."} Tap a document to open or save it.</p>
+            <p className="mt-2 text-[1.0625rem] leading-relaxed">{info.note || "Here are your documents."} Tap a document to open or save it.</p>
             <ul className="mt-6 space-y-3">
               {info.files.map((f) => (
                 <li key={f.id}>
@@ -110,7 +110,7 @@ export default function UploadPage() {
                   >
                     <FileText className="h-6 w-6 shrink-0 text-primary" aria-hidden />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[17px] font-semibold">{f.name}</span>
+                      <span className="block truncate text-[1.0625rem] font-semibold">{f.name}</span>
                       <span className="block text-sm text-muted-foreground">{f.size_bytes > 1048576 ? `${(f.size_bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size_bytes / 1024))} KB`}</span>
                     </span>
                     <Download className="h-5 w-5 shrink-0 text-primary" aria-label="Download" />
@@ -127,7 +127,7 @@ export default function UploadPage() {
         {info && info.can_upload && info.direction !== "send" && (
           <>
             <h1 className="text-2xl font-bold text-ink">{info.first_name ? `Hi ${info.first_name},` : "Hello,"}</h1>
-            <p className="mt-2 text-[17px] leading-relaxed">
+            <p className="mt-2 text-[1.0625rem] leading-relaxed">
               {info.note || "Please upload the documents below."} You can take a photo with your phone or choose a PDF.
             </p>
 
@@ -162,7 +162,7 @@ function UploadItem({ item, uploads, onFiles }) {
     <li className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[17px] font-semibold">{item.name}</p>
+          <p className="text-[1.0625rem] font-semibold">{item.name}</p>
           <p className={`mt-0.5 text-sm ${received ? "text-success" : "text-muted-foreground"}`}>
             {received ? `${item.file_count} ${item.file_count === 1 ? "file" : "files"} received` : "Not sent yet"}
           </p>
@@ -216,7 +216,7 @@ function Notice({ icon: Icon, title, text }) {
     <div className="rounded-lg border border-border bg-card p-6 text-center">
       <Icon className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden />
       <h1 className="mt-3 text-xl font-bold text-ink">{title}</h1>
-      <p className="mt-2 text-[17px] leading-relaxed text-muted-foreground">{text}</p>
+      <p className="mt-2 text-[1.0625rem] leading-relaxed text-muted-foreground">{text}</p>
     </div>
   );
 }

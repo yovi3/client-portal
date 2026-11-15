@@ -148,10 +148,10 @@ export default function RolesTab({
                         <td className={tdClass}>
                           <div className="flex flex-wrap gap-1">
                             {entry.permissions.slice(0, 3).map((k) => (
-                              <span key={k} className="inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{k}</span>
+                              <span key={k} className="inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[0.625rem] font-medium text-muted-foreground">{k}</span>
                             ))}
                             {entry.permissions.length > 3 && (
-                              <span className="inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">+{entry.permissions.length - 3}</span>
+                              <span className="inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[0.625rem] font-medium text-muted-foreground">+{entry.permissions.length - 3}</span>
                             )}
                           </div>
                         </td>

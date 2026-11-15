@@ -231,7 +231,7 @@ export default function InvitesTab({
                       )}
                       {cols.includes("role") && (
                         <td className={tdClass}>
-                          <span className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{entry.role}</span>
+                          <span className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[0.6875rem] font-medium text-muted-foreground">{entry.role}</span>
                         </td>
                       )}
                       {cols.includes("status") && <td className={tdClass}><StatusBadge status={entry.status} /></td>}
@@ -254,7 +254,7 @@ export default function InvitesTab({
                               <Copy className="h-3.5 w-3.5 mr-1" />Copy
                             </Button>
                           ) : (
-                            <span className="text-[11px] text-muted-foreground/60 pr-1">No link</span>
+                            <span className="text-[0.6875rem] text-muted-foreground/60 pr-1">No link</span>
                           )}
                         </div>
                       </td>

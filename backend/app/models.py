@@ -40,6 +40,10 @@ class User(Base):
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
+    # Appearance, chosen by each person in Settings: theme is light, dark or system
+    # (match the computer); text_size is normal or large.
+    theme = Column(String, nullable=False, default="system", server_default="system")
+    text_size = Column(String, nullable=False, default="normal", server_default="normal")
     role = Column(String, nullable=False) # 'lawyer', 'client', 'admin', 'accountant'
     aad_object_id = Column(String, unique=True, index=True, nullable=True)
     auth_provider = Column(String, nullable=False, default="local")

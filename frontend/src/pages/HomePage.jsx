@@ -10,7 +10,7 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Scale className="h-6 w-6 text-black" />
-            <span className="text-xl font-semibold">Injury Case Portal</span>
+            <span className="text-xl font-semibold">DSS Connect</span>
           </div>
           <nav className="flex items-center gap-2">
             <a href="/dashboard">

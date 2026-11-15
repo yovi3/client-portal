@@ -39,7 +39,7 @@ export default function Cases() {
       <div className="p-6 space-y-5">
 
         <div className="flex items-center justify-between">
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Cases</h1>
+          <h1 className="text-[1.375rem] font-bold tracking-tight text-foreground">Cases</h1>
         </div>
 
         <Card className="border-border shadow-none">
@@ -74,7 +74,7 @@ export default function Cases() {
                     <div className="flex items-center gap-2 mb-0.5">
                       <p className="font-medium text-sm text-foreground truncate">{c.title}</p>
                       {(c.unread_count || 0) > 0 && (
-                        <Badge variant="destructive" className="h-4 px-1 text-[10px] shrink-0">
+                        <Badge variant="destructive" className="h-4 px-1 text-[0.625rem] shrink-0">
                           {c.unread_count} new
                         </Badge>
                       )}

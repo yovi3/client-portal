@@ -44,7 +44,7 @@ export default function Header({ mobileMenuTrigger }) {
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
             <Scale className="h-5 w-5 text-primary" />
-            <span className="text-lg font-semibold text-ink">DSS Messaging</span>
+            <span className="text-lg font-semibold text-ink">DSS Connect</span>
           </div>
         </div>
       </header>
@@ -52,24 +52,25 @@ export default function Header({ mobileMenuTrigger }) {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur">
-      <div className="flex h-14 items-center justify-between gap-4 px-4 md:px-6">
-        <div className="flex items-center gap-2">
+    <header className="z-40 shrink-0 border-b border-white/10 bg-bar text-white">
+      <div className="flex h-14 items-center justify-between gap-4 px-3 md:px-5">
+        <div className="flex min-w-0 items-center gap-3">
           {mobileMenuTrigger}
-          <span className="md:hidden flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded bg-brand text-[10px] font-bold text-white">DSS</span>
-            <span className="font-semibold text-ink">Messaging</span>
-          </span>
+          {/* Firm mark: the app name first, the firm beside it when there's room */}
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand text-[0.6875rem] font-bold tracking-wide">DSS</span>
+          <span className="text-[0.9375rem] font-semibold">Connect</span>
+          <span className="hidden h-5 w-px bg-white/20 sm:block" aria-hidden />
+          <span className="hidden truncate text-sm text-white/70 sm:block">Davis, Saperstein &amp; Salomon</span>
         </div>
 
         <div className="flex items-center gap-2">
           {/* Notifications */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full" aria-label="Notifications">
+              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full text-white hover:bg-white/10 hover:text-white" aria-label="Notifications">
                 <Bell className="h-4 w-4" />
                 {hasUnread && (
-                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full border border-background bg-destructive"></span>
+                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full border border-bar bg-destructive"></span>
                 )}
               </Button>
             </PopoverTrigger>

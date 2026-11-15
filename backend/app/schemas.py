@@ -65,6 +65,8 @@ class User(BaseModel):
     azure_groups: List[str] = Field(default_factory=list)
     effective_role_source: Optional[str] = None
     last_azure_sync_at: Optional[datetime] = None
+    theme: Optional[str] = "system"
+    text_size: Optional[str] = "normal"
 
     lawyer_profile: Optional[LawyerProfileBase] = None
     client_profile: Optional[ClientProfileBase] = None
@@ -709,3 +711,8 @@ class PublicFileRequest(BaseModel):
     direction: str = "request"
     items: List[PublicFileRequestItem] = []
     files: List[PublicSentFile] = []
+
+
+class AppearanceUpdate(BaseModel):
+    theme: Optional[Literal["light", "dark", "system"]] = None
+    text_size: Optional[Literal["normal", "large"]] = None

@@ -5,13 +5,26 @@ import {
   OctagonXIcon,
   TriangleAlertIcon,
 } from "lucide-react"
-import { useTheme } from "next-themes"
+import { useEffect, useState } from "react"
 import { Toaster as Sonner } from "sonner";
+
+// Pop-up messages follow the person's own setting (lib/appearance.js), which marks
+// the page with a "dark" class, rather than only the computer's setting.
+function usePageTheme() {
+  const read = () => (document.documentElement.classList.contains("dark") ? "dark" : "light")
+  const [theme, setTheme] = useState(read)
+  useEffect(() => {
+    const observer = new MutationObserver(() => setTheme(read()))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
+    return () => observer.disconnect()
+  }, [])
+  return theme
+}
 
 const Toaster = ({
   ...props
 }) => {
-  const { theme = "system" } = useTheme()
+  const theme = usePageTheme()
 
   return (
     <Sonner

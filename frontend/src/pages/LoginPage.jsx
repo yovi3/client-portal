@@ -66,9 +66,9 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2.5 mb-3">
             <Scale className="h-7 w-7 text-primary" />
-            <span className="text-xl font-bold text-foreground tracking-tight">Injury Case Portal</span>
+            <span className="text-xl font-bold text-foreground tracking-tight">DSS Connect</span>
           </div>
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Welcome back</h1>
+          <h1 className="text-[1.375rem] font-bold tracking-tight text-foreground">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">Sign in to your account to continue</p>
         </div>
 

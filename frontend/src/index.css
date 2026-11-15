@@ -44,6 +44,7 @@
   --color-brand: var(--brand);
   --color-brand-strong: var(--brand-strong);
   --color-ink: var(--ink);
+  --color-bar: var(--bar);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --font-sans: "Atkinson Hyperlegible Next Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -54,7 +55,8 @@
      Ink navy and action blue are shared with the LBAssureSign retainer app.
      Bronze is the firm's brand color from dsslaw.com: brand mark and the
      client's current case stage only. Green, amber and red only carry meaning. */
-  --ink: #1B2A41;          /* headings, header */
+  --ink: #1B2A41;          /* headings and strong text */
+  --bar: #1B2A41;          /* the navy top bar */
   --brand: #B07A3B;        /* firm bronze: marks and fills, never body text */
   --brand-strong: #8A5A22; /* bronze when it has to be text (passes contrast) */
   --success: #2E7D4F;      /* done */
@@ -96,40 +98,57 @@
   --sidebar-ring: #1F5FBF;
 }
 
+/* Dark mode: chosen per person in Settings (Light, Dark, or Match my computer).
+   Same palette, built for dark backgrounds and checked for readable contrast:
+   deep navy surfaces, a lighter action blue, and the meaning colors (green, amber,
+   red) brightened so they still read clearly. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --cta: oklch(0.62 0.15 60);
-  --cta-foreground: oklch(0.145 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.546 0.245 262.881);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  color-scheme: dark;
+  --ink: #E8EDF4;          /* headings and strong text on dark */
+  --bar: #0A1220;          /* top bar, a step darker than the page */
+  --brand: #B07A3B;
+  --brand-strong: #E0AE6E;
+  --success: #4CC38A;
+  --warning: #E3B456;
+
+  --background: #0F1828;
+  --foreground: #E1E7EF;
+  --cta: #5B93F0;
+  --cta-foreground: #0B1220;
+  --card: #16213A;
+  --card-foreground: #E1E7EF;
+  --popover: #1A2742;
+  --popover-foreground: #E1E7EF;
+  --primary: #5B93F0;
+  --primary-foreground: #0B1220;
+  --secondary: #1F2C46;
+  --secondary-foreground: #E1E7EF;
+  --muted: #1C2840;
+  --muted-foreground: #9FADC0;
+  --accent: #1E3456;
+  --accent-foreground: #E8EDF4;
+  --destructive: #F0736C;
+  --border: #2A3956;
+  --input: #3A4B6B;
+  --ring: #5B93F0;
+  --chart-1: #5B93F0;
+  --chart-2: #D9A35F;
+  --chart-3: #4CC38A;
+  --chart-4: #E8EDF4;
+  --chart-5: #7D8BA1;
+  --sidebar: #16213A;
+  --sidebar-foreground: #E1E7EF;
+  --sidebar-primary: #5B93F0;
+  --sidebar-primary-foreground: #0B1220;
+  --sidebar-accent: #1E3456;
+  --sidebar-accent-foreground: #E8EDF4;
+  --sidebar-border: #2A3956;
+  --sidebar-ring: #5B93F0;
+}
+
+/* Larger text, chosen per person in Settings. Sizes are in rem, so this scales them all. */
+html[data-text-size="large"] {
+  font-size: 112.5%;
 }
 
 @layer base {

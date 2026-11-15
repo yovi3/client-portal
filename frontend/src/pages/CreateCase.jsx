@@ -175,7 +175,7 @@ export default function CreateCase() {
         </div>
 
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Create New Case</h1>
+          <h1 className="text-[1.375rem] font-bold tracking-tight text-foreground">Create New Case</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">Fill in the details below to initiate a new injury case</p>
         </div>
 

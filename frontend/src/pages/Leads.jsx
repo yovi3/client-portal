@@ -122,7 +122,7 @@ export default function Leads() {
       <div className="space-y-5 p-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-[22px] font-bold tracking-tight">Leads</h1>
+            <h1 className="text-[1.375rem] font-bold tracking-tight">Leads</h1>
             <p className="text-sm text-muted-foreground">
               {view === "list"
                 ? "Every lead in the portal. Typed in by hand until LeadBase is connected."
@@ -168,11 +168,11 @@ export default function Leads() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate text-sm font-medium">{lead.name || formatPhone(lead.phone) || "No name"}</span>
-                          <span className="shrink-0 text-[11px] text-muted-foreground"><time>{shortTime(lead.last_message_at)}</time></span>
+                          <span className="shrink-0 text-[0.6875rem] text-muted-foreground"><time>{shortTime(lead.last_message_at)}</time></span>
                         </div>
                         <div className="mt-1 flex items-center gap-2">
                           <LeadTag number={lead.lead_number} />
-                          {lead.status !== "open" && <span className="text-[11px] text-muted-foreground">{STATUS_LABEL[lead.status]}</span>}
+                          {lead.status !== "open" && <span className="text-[0.6875rem] text-muted-foreground">{STATUS_LABEL[lead.status]}</span>}
                         </div>
                         <p className="mt-1 truncate text-xs text-muted-foreground">
                           {lead.last_message

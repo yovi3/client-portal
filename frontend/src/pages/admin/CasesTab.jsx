@@ -223,7 +223,7 @@ export default function CasesTab({
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-foreground">{entry.title || "Untitled"}</span>
                             {(entry.unread_count || 0) > 0 && (
-                              <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0 text-[10px] font-semibold text-red-700">{entry.unread_count} new</span>
+                              <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0 text-[0.625rem] font-semibold text-red-700">{entry.unread_count} new</span>
                             )}
                           </div>
                           {entry.description && (

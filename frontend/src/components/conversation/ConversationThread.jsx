@@ -88,7 +88,7 @@ export default function ConversationThread({ conversationId, contactName, optedO
                 {showDay && (
                   <div className="my-4 flex items-center gap-3">
                     <div className="h-px flex-1 bg-border" />
-                    <span className="text-[11px] font-medium text-muted-foreground">{dayOf(msg.timestamp)}</span>
+                    <span className="text-[0.6875rem] font-medium text-muted-foreground">{dayOf(msg.timestamp)}</span>
                     <div className="h-px flex-1 bg-border" />
                   </div>
                 )}
@@ -98,14 +98,14 @@ export default function ConversationThread({ conversationId, contactName, optedO
                       {initials(isOwn ? user?.name : name)}
                     </span>
                     <div className="min-w-0 space-y-1">
-                      <p className={`px-1 text-[11px] font-medium text-muted-foreground ${fromStaff ? "text-right" : ""}`}>{name}</p>
+                      <p className={`px-1 text-[0.6875rem] font-medium text-muted-foreground ${fromStaff ? "text-right" : ""}`}>{name}</p>
                       <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${fromStaff ? "rounded-br-sm bg-primary text-primary-foreground" : msg.message_type === "file_upload" ? "rounded-bl-sm border border-success/40 bg-success/10" : "rounded-bl-sm border border-border bg-card shadow-sm"}`}>
                         {msg.message_type === "file_request" && <span className="mb-1 flex items-center gap-1 text-xs font-semibold opacity-90"><FilePlus className="h-3.5 w-3.5" /> Document request</span>}
                         {msg.message_type === "file_send" && <span className="mb-1 flex items-center gap-1 text-xs font-semibold opacity-90"><Paperclip className="h-3.5 w-3.5" /> Documents sent</span>}
                         {msg.message_type === "file_upload" && <Paperclip className="mr-1.5 inline h-3.5 w-3.5 text-success" aria-hidden />}
                         {msg.content}
                       </div>
-                      <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1 text-[11px] text-muted-foreground ${fromStaff ? "flex-row-reverse" : ""}`}>
+                      <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1 text-[0.6875rem] text-muted-foreground ${fromStaff ? "flex-row-reverse" : ""}`}>
                         <time>{timeOf(msg.timestamp)}</time>
                         {!fromStaff && msg.message_type === "file_upload" && <span>Upload link</span>}
                         {!fromStaff && msg.channel === "sms" && (
@@ -139,7 +139,7 @@ export default function ConversationThread({ conversationId, contactName, optedO
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder={optedOut ? `${contactName || "This number"} opted out of texts. Messages are saved but not sent.` : `Text ${contactName || "this number"}`}
-            className="max-h-40 min-h-0 resize-none border-0 bg-transparent px-0 py-1.5 shadow-none focus-visible:ring-0"
+            className="max-h-40 min-h-0 resize-none border-0 bg-transparent px-0 py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           <Button size="icon" className="h-9 w-9 shrink-0 rounded-full" onClick={send} disabled={!draft.trim() || !connected} aria-label="Send text">
             <Send className="h-4 w-4" />
@@ -154,7 +154,7 @@ export default function ConversationThread({ conversationId, contactName, optedO
             {parts > 1 && <span className="shrink-0 font-medium text-warning tabular">Sends as {parts} texts</span>}
           </div>
         )}
-        <p className="mt-1 px-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 px-1 text-[0.6875rem] text-muted-foreground">
           {connected ? "Enter to send, Shift+Enter for a new line" : "Connecting…"}
         </p>
       </div>

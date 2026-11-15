@@ -10,6 +10,7 @@ import Messages from "@/pages/Messages";
 import Leads from "@/pages/Leads";
 import NeedsAssigning from "@/pages/NeedsAssigning";
 import UploadPage from "@/pages/UploadPage";
+import Settings from "@/pages/Settings";
 import AzureCallback from './pages/AzureCallback'
 import SmsLandingPage from './pages/SmsLandingPage'
 import CaseDetail from '@/pages/CaseDetail'
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/invite" element={<InviteAcceptPage />} />
         <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+        <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
         <Route path="/cases" element={<RequireAuth><Cases /></RequireAuth>} />
         <Route path="/clients" element={<RequireRole allowedRoles={personnelRoles}><Clients /></RequireRole>} />
         <Route path="/contacts" element={<Navigate to="/clients" replace />} />

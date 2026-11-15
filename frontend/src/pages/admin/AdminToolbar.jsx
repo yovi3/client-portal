@@ -135,7 +135,7 @@ export function SortButton({ dataset, field, label, currentSort, onSort }) {
   );
 }
 
-export const thClass = "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground bg-muted";
+export const thClass = "px-3 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground bg-muted";
 export const tdClass = "px-3 py-2 text-sm text-foreground align-middle";
 
 export function rowClass(isFocused) {

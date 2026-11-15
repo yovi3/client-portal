@@ -395,7 +395,7 @@ function ConvButton({ conv, selected, onSelect, subtitle }) {
         <div className="flex items-center justify-between gap-2">
           <p className="font-medium text-sm truncate">{conv.participantName}</p>
           {conv.unreadCount > 0 && (
-            <Badge className="h-4 min-w-4 px-1 text-[10px] font-bold shrink-0">{conv.unreadCount}</Badge>
+            <Badge className="h-4 min-w-4 px-1 text-[0.625rem] font-bold shrink-0">{conv.unreadCount}</Badge>
           )}
         </div>
         {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
@@ -756,7 +756,7 @@ export default function Messages() {
 
         {/* Page header */}
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">
+          <h1 className="text-[1.375rem] font-bold tracking-tight text-foreground">
             {!isStaff ? "Messages" : view === "team" ? "Team chat" : "Cases"}
           </h1>
           {isStaff && (
@@ -908,7 +908,7 @@ export default function Messages() {
                           {showDateSep && (
                             <div className="flex items-center gap-3 my-4">
                               <div className="flex-1 h-px bg-muted" />
-                              <span className="text-[11px] font-medium text-muted-foreground px-2">{formatDateSeparator(msg.timestamp)}</span>
+                              <span className="text-[0.6875rem] font-medium text-muted-foreground px-2">{formatDateSeparator(msg.timestamp)}</span>
                               <div className="flex-1 h-px bg-muted" />
                             </div>
                           )}
@@ -926,7 +926,7 @@ export default function Messages() {
                               </AvatarFallback>
                             </Avatar>
                             <div className="space-y-1">
-                              <p className={`text-[11px] font-medium text-muted-foreground px-1 ${isOwn ? "text-right" : "text-left"}`}>{senderName}</p>
+                              <p className={`text-[0.6875rem] font-medium text-muted-foreground px-1 ${isOwn ? "text-right" : "text-left"}`}>{senderName}</p>
                               <div
                                 className={`rounded-2xl px-4 py-2.5 ${
                                   isOwn
@@ -986,9 +986,9 @@ export default function Messages() {
                                 )}
                               </div>
                               <div className={`flex items-center gap-1.5 px-1 ${isOwn ? "flex-row-reverse" : ""}`}>
-                                <p className="text-[11px] text-muted-foreground">{formatTime(msg.timestamp)}</p>
+                                <p className="text-[0.6875rem] text-muted-foreground">{formatTime(msg.timestamp)}</p>
                                 {isStaff && !fromStaff && selectedConversation.type === "case" && (
-                                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                  <span className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
                                     {msg.channel === "sms" && <Smartphone className="h-3 w-3" />}
                                     {msg.channel === "sms" ? "By text" : "In portal"}
                                   </span>
@@ -996,7 +996,7 @@ export default function Messages() {
                                 {textStatus && (
                                   <span
                                     role="status"
-                                    className={`flex items-center gap-1 text-[11px] ${
+                                    className={`flex items-center gap-1 text-[0.6875rem] ${
                                       textStatus.tone === "danger" ? "text-destructive font-medium"
                                         : textStatus.tone === "warning" ? "text-warning"
                                         : "text-muted-foreground"
@@ -1047,7 +1047,7 @@ export default function Messages() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage() }
                         }}
-                        className="min-h-0 max-h-40 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 py-1.5"
+                        className="min-h-0 max-h-40 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 px-0 py-1.5 dark:bg-transparent"
                       />
                       <Button
                         onClick={sendMessage}
@@ -1070,7 +1070,7 @@ export default function Messages() {
                         )}
                       </div>
                     )}
-                    <p className="mt-1 px-1 text-[11px] text-muted-foreground">Enter to send, Shift+Enter for a new line</p>
+                    <p className="mt-1 px-1 text-[0.6875rem] text-muted-foreground">Enter to send, Shift+Enter for a new line</p>
                   </div>
                 </div>
               </div>

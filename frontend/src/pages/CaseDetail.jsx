@@ -443,7 +443,7 @@ export default function CaseDetail() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[22px] font-bold tracking-tight text-foreground leading-tight truncate">
+            <h1 className="text-[1.375rem] font-bold tracking-tight text-foreground leading-tight truncate">
               {caseData?.title || "Untitled Case"}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -479,7 +479,7 @@ export default function CaseDetail() {
             {/* Case details */}
             <Card className="border-border shadow-none">
               <CardHeader className="px-5 py-3 border-b border-border">
-                <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <CardTitle className="text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
                   Case Details
                 </CardTitle>
               </CardHeader>
@@ -495,7 +495,7 @@ export default function CaseDetail() {
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-1">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
                       Type
                     </p>
                     <p className="text-sm text-foreground mt-0.5">
@@ -503,7 +503,7 @@ export default function CaseDetail() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
                       Lawbase #
                     </p>
                     <p className="text-sm text-foreground mt-0.5">
@@ -512,7 +512,7 @@ export default function CaseDetail() {
                   </div>
                   {caseData?.status && (
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground">
                         Status
                       </p>
                       <Badge
@@ -533,7 +533,7 @@ export default function CaseDetail() {
               {/* DSS Team */}
               <Card className="border-border shadow-none">
                 <CardHeader className="px-5 py-3 border-b border-border flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <CardTitle className="text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
                     DSS Team
                     <span className="ml-1.5 text-muted-foreground/60 font-medium normal-case tracking-normal">
                       ({personnel?.length || 0})
@@ -596,7 +596,7 @@ export default function CaseDetail() {
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <Avatar className="h-8 w-8">
-                                      <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-semibold">
+                                      <AvatarFallback className="bg-primary/10 text-primary text-[0.6875rem] font-semibold">
                                         {getInitials(person.name)}
                                       </AvatarFallback>
                                     </Avatar>
@@ -645,7 +645,7 @@ export default function CaseDetail() {
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <Avatar className="h-8 w-8 shrink-0">
-                              <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-semibold">
+                              <AvatarFallback className="bg-primary/10 text-primary text-[0.6875rem] font-semibold">
                                 {getInitials(p.name)}
                               </AvatarFallback>
                             </Avatar>
@@ -683,7 +683,7 @@ export default function CaseDetail() {
               {/* Clients */}
               <Card className="border-border shadow-none">
                 <CardHeader className="px-5 py-3 border-b border-border flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <CardTitle className="text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
                     Clients
                     <span className="ml-1.5 text-muted-foreground/60 font-medium normal-case tracking-normal">
                       ({clients?.length || 0})
@@ -763,7 +763,7 @@ export default function CaseDetail() {
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <Avatar className="h-8 w-8">
-                                      <AvatarFallback className="bg-muted text-foreground text-[11px] font-semibold">
+                                      <AvatarFallback className="bg-muted text-foreground text-[0.6875rem] font-semibold">
                                         {getInitials(client.name)}
                                       </AvatarFallback>
                                     </Avatar>
@@ -811,7 +811,7 @@ export default function CaseDetail() {
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <Avatar className="h-8 w-8 shrink-0">
-                              <AvatarFallback className="bg-muted text-foreground text-[11px] font-semibold">
+                              <AvatarFallback className="bg-muted text-foreground text-[0.6875rem] font-semibold">
                                 {getInitials(c.name)}
                               </AvatarFallback>
                             </Avatar>
@@ -855,7 +855,7 @@ export default function CaseDetail() {
             {/* Documents */}
             <Card className="border-border shadow-none">
               <CardHeader className="px-5 py-3 border-b border-border">
-                <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <CardTitle className="text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
                   Documents
                   <span className="ml-1.5 text-muted-foreground/60 font-medium normal-case tracking-normal">
                     ({documents?.length || 0})
@@ -907,7 +907,7 @@ export default function CaseDetail() {
                             ) : (
                               <Badge
                                 variant="outline"
-                                className="text-[10px] text-amber-700 bg-amber-50 border-amber-200 font-medium"
+                                className="text-[0.625rem] text-amber-700 bg-amber-50 border-amber-200 font-medium"
                               >
                                 Required
                               </Badge>
@@ -978,7 +978,7 @@ export default function CaseDetail() {
                           {showDate && msg.timestamp && (
                             <div className="flex items-center gap-3 my-3">
                               <div className="flex-1 h-px bg-muted" />
-                              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                              <span className="text-[0.625rem] font-medium uppercase tracking-wider text-muted-foreground">
                                 {formatDateSeparator(msg.timestamp)}
                               </span>
                               <div className="flex-1 h-px bg-muted" />
@@ -998,8 +998,8 @@ export default function CaseDetail() {
                                 <AvatarFallback
                                   className={
                                     isMe
-                                      ? "bg-primary text-primary-foreground text-[10px] font-semibold"
-                                      : "bg-muted text-foreground text-[10px] font-semibold"
+                                      ? "bg-primary text-primary-foreground text-[0.625rem] font-semibold"
+                                      : "bg-muted text-foreground text-[0.625rem] font-semibold"
                                   }
                                 >
                                   {getInitials(senderName)}
@@ -1011,7 +1011,7 @@ export default function CaseDetail() {
                                 } flex flex-col`}
                               >
                                 <p
-                                  className={`text-[10px] font-medium text-muted-foreground px-1 ${
+                                  className={`text-[0.625rem] font-medium text-muted-foreground px-1 ${
                                     isMe ? "text-right" : "text-left"
                                   }`}
                                 >
@@ -1034,7 +1034,7 @@ export default function CaseDetail() {
                                   )}
                                 </div>
                                 <p
-                                  className={`text-[10px] text-muted-foreground px-1 ${
+                                  className={`text-[0.625rem] text-muted-foreground px-1 ${
                                     isMe ? "text-right" : "text-left"
                                   }`}
                                 >

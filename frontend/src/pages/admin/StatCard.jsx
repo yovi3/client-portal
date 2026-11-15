@@ -12,7 +12,7 @@ export function StatCard({ label, value, hint, tone = "default" }) {
       )}
     >
       <CardContent className="p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+        <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
         <p className={cn(
           "mt-1.5 text-2xl font-bold",
           tone === "default" && "text-foreground",
@@ -37,7 +37,7 @@ export function StatusBadge({ status }) {
   };
   return (
     <span className={cn(
-      "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
+      "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[0.6875rem] font-medium",
       map[status] || "bg-muted text-muted-foreground border-border"
     )}>
       {status}
