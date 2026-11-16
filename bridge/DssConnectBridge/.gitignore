@@ -1,0 +1,4 @@
+bin/
+obj/
+# Holds the bridge key. Never commit it.
+appsettings.local.json
