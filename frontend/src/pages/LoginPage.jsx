@@ -177,6 +177,8 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
+        <p className="mt-6 text-center text-xs text-muted-foreground">Designed by Sebastian Kucik</p>
+
         {passwordLogin && (
           <p className="text-center text-sm text-muted-foreground mt-4">
             Don&apos;t have an account?{" "}

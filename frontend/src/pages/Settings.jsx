@@ -95,6 +95,12 @@ export default function Settings() {
           </div>
           <p className="text-xs text-muted-foreground">Larger makes all text in DSS Connect about one size bigger.</p>
         </section>
+
+        <section aria-labelledby="about-heading" className="space-y-1 border-t border-border pt-6">
+          <h2 id="about-heading" className="text-base font-semibold">About DSS Connect</h2>
+          <p className="text-sm text-muted-foreground">Texting, documents and leads for Davis, Saperstein &amp; Salomon, connected to LawBase.</p>
+          <p className="text-sm text-muted-foreground">Designed by Sebastian Kucik, IT Director, Davis, Saperstein &amp; Salomon, P.C.</p>
+        </section>
       </div>
     </MainLayout>
   );

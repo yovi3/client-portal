@@ -1,17 +1,30 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { Scale, Bell } from "lucide-react";
+import { Scale, Bell, LogOut, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
 } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useUser } from "@/lib/UserContext";
 import { usePolling } from "@/lib/PollingContext";
 
-export default function Header({ mobileMenuTrigger }) {
-  const { user } = useUser();
+const initialsOf = (name) =>
+  (name || "?").trim().split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+
+// The navy top bar: menu toggle and firm mark on the left; notifications and the
+// signed-in person's menu (Settings, Sign out) on the right.
+export default function Header({ mobileMenuTrigger, sidebarCollapsed, onToggleSidebar }) {
+  const { user, logout } = useUser();
   const { notifications, unreadCount, refetch } = usePolling();
   
   const navigate = useNavigate();
@@ -56,6 +69,19 @@ export default function Header({ mobileMenuTrigger }) {
       <div className="flex h-14 items-center justify-between gap-4 px-3 md:px-5">
         <div className="flex min-w-0 items-center gap-3">
           {mobileMenuTrigger}
+          {onToggleSidebar && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleSidebar}
+              aria-label={sidebarCollapsed ? "Show menu names" : "Show menu icons only"}
+              aria-pressed={sidebarCollapsed}
+              title={sidebarCollapsed ? "Show menu names" : "Show menu icons only"}
+              className="hidden h-9 w-9 text-white hover:bg-white/10 hover:text-white md:inline-flex"
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+            </Button>
+          )}
           {/* Firm mark: the app name first, the firm beside it when there's room */}
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand text-[0.6875rem] font-bold tracking-wide">DSS</span>
           <span className="text-[0.9375rem] font-semibold">Connect</span>
@@ -112,6 +138,30 @@ export default function Header({ mobileMenuTrigger }) {
             </PopoverContent>
           </Popover>
 
+          {/* The signed-in person */}
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Account: ${user.name}`}
+                className="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-sm hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
+                  {initialsOf(user.name)}
+                </span>
+                <span className="hidden max-w-[12rem] truncate font-medium md:block">{user.name}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="font-normal">
+                <p className="truncate text-sm font-semibold">{user.name}</p>
+                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => navigate("/settings")}><Settings className="h-4 w-4" /> Settings</DropdownMenuItem>
+              <DropdownMenuItem onSelect={async () => { await logout(); navigate("/login"); }}><LogOut className="h-4 w-4" /> Sign out</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>

@@ -759,3 +759,11 @@ class BridgeLeadResult(BaseModel):
     unchanged: int
     conversations_created: int
     skipped: List[str] = []
+
+
+class LeadPage(BaseModel):
+    """One page of the lead list."""
+    items: List[Lead]
+    total: int
+    offset: int
+    limit: int

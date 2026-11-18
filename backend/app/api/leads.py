@@ -8,6 +8,7 @@ import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import database, models, schemas
@@ -72,25 +73,24 @@ def list_assignable_staff(
     )
 
 
-@router.get("/leads", response_model=List[schemas.Lead])
-def list_leads(
-    show: str = "active",
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    """Leads still being worked (show=active, the default) or every lead (show=all).
-
-    Active means open in the portal: New or In Progress in LeadBase, or typed in by hand
-    and not marked signed or closed.
-    """
-    # Every staff member sees every lead for now; LawBase security levels decide this in task 2.7.
-    require_role(current_user, PERSONNEL_ROLES)
-    q = db.query(models.Lead)
-    if show != "all":
-        q = q.filter(models.Lead.status == "open")
-    leads = q.order_by(models.Lead.created_at.desc(), models.Lead.id.desc()).all()
-    convs = db.query(models.Conversation).all()
+def _describe(db: Session, leads: List[models.Lead]) -> List[schemas.Lead]:
+    """Each lead with its conversation, latest text and any phone note, built with a few
+    queries for the whole batch rather than several per lead."""
+    if not leads:
+        return []
+    lead_ids = [l.id for l in leads]
+    phones = {l.phone for l in leads if l.phone}
+    convs = db.query(models.Conversation).filter(
+        (models.Conversation.lead_id.in_(lead_ids)) | (models.Conversation.phone.in_(phones or {""}))
+    ).all()
     by_phone = {c.phone: c for c in convs}
+    conv_ids = [c.id for c in convs]
+    latest_ids = (db.query(func.max(models.Message.id))
+                  .filter(models.Message.conversation_id.in_(conv_ids or [0]))
+                  .group_by(models.Message.conversation_id))
+    last_by_conv = {m.conversation_id: m for m in db.query(models.Message).filter(models.Message.id.in_(latest_ids))}
+    sender_ids = {m.sender_id for m in last_by_conv.values() if m.sender_id}
+    role_by_user = dict(db.query(models.User.id, models.User.role).filter(models.User.id.in_(sender_ids))) if sender_ids else {}
     by_lead = {}
     for c in convs:
         if c.lead_id:
@@ -106,12 +106,11 @@ def list_leads(
             item.conversation_id = conv.id
             item.sms_opted_out = bool(conv.sms_opted_out)
             item.last_message_at = conv.last_message_at
-            last = (db.query(models.Message).filter(models.Message.conversation_id == conv.id)
-                    .order_by(models.Message.timestamp.desc(), models.Message.id.desc()).first())
+            last = last_by_conv.get(conv.id)
             if last:
                 item.last_message = schemas.ConversationLastMessage(
                     content=last.content, timestamp=last.timestamp,
-                    inbound=last.sender_id is None or (last.sender_user is not None and last.sender_user.role == "client"),
+                    inbound=last.sender_id is None or role_by_user.get(last.sender_id) == "client",
                 )
         else:
             other = by_phone.get(lead.phone) if lead.phone else None
@@ -120,6 +119,27 @@ def list_leads(
             elif other and other.lead_id:
                 item.phone_note = "This number already has a conversation linked to another lead."
         result.append(item)
+    return result
+
+
+@router.get("/leads", response_model=List[schemas.Lead])
+def list_leads(
+    show: str = "active",
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Leads still being worked (show=active, the default) or every lead (show=all).
+    The conversation view uses this: most recent conversation first.
+
+    Active means open in the portal: New or In Progress in LeadBase, or typed in by hand
+    and not marked signed or closed.
+    """
+    # Every staff member sees every lead for now; LawBase security levels decide this in task 2.7.
+    require_role(current_user, PERSONNEL_ROLES)
+    q = db.query(models.Lead)
+    if show != "all":
+        q = q.filter(models.Lead.status == "open")
+    result = _describe(db, q.order_by(models.Lead.created_at.desc(), models.Lead.id.desc()).all())
     # Most recent conversation first; leads nobody has texted yet after them, newest first.
     def stamp(value):
         if value is None:
@@ -127,6 +147,77 @@ def list_leads(
         return (value if value.tzinfo else value.replace(tzinfo=datetime.timezone.utc)).timestamp()
     result.sort(key=lambda l: (l.last_message_at is not None, stamp(l.last_message_at or l.created_at)), reverse=True)
     return result
+
+
+# Columns the lead list can be sorted by.
+_SORTS = {
+    "lead_number": lambda: [func.length(models.Lead.lead_number), models.Lead.lead_number],
+    "name": lambda: [models.Lead.last_name, models.Lead.first_name],
+    "type": lambda: [models.Lead.lead_type],
+    "status": lambda: [models.Lead.lb_status],
+    "assigned": lambda: [models.Lead.assigned_name],
+    "source": lambda: [models.Lead.source],
+    "created": lambda: [models.Lead.created_at],
+}
+
+
+@router.get("/leads/page", response_model=schemas.LeadPage)
+def lead_page(
+    show: str = "all",
+    q: Optional[str] = None,
+    sort: str = "created",
+    direction: str = "desc",
+    offset: int = 0,
+    limit: int = 50,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """One page of the lead list, sorted and searched on the server, so the list stays
+    quick however many leads there are. The screen asks for the next page as you scroll."""
+    require_role(current_user, PERSONNEL_ROLES)
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    query = db.query(models.Lead)
+    if show != "all":
+        query = query.filter(models.Lead.status == "open")
+    text = (q or "").strip()
+    if text:
+        like = f"%{text}%"
+        conditions = [models.Lead.lead_number.ilike(like), models.Lead.first_name.ilike(like),
+                      models.Lead.last_name.ilike(like), models.Lead.assigned_name.ilike(like)]
+        digits = "".join(ch for ch in text if ch.isdigit())
+        if len(digits) >= 3:
+            conditions.append(models.Lead.phone.like(f"%{digits}%"))
+        # "Dana Ng" matches first and last name together
+        parts = text.split()
+        if len(parts) >= 2:
+            conditions.append(models.Lead.first_name.ilike(f"%{parts[0]}%") & models.Lead.last_name.ilike(f"%{parts[-1]}%"))
+        from sqlalchemy import or_
+        query = query.filter(or_(*conditions))
+    total = query.count()
+    columns = _SORTS.get(sort, _SORTS["created"])()
+    descending = direction != "asc"
+    # Empty values (no name, no type...) always go to the end, whichever way it's sorted.
+    order = []
+    for c in columns:
+        order += [c.is_(None).asc(), c.desc() if descending else c.asc()]
+    order.append(models.Lead.id.desc() if descending else models.Lead.id.asc())  # stable paging
+    leads = query.order_by(*order).offset(offset).limit(limit).all()
+    return schemas.LeadPage(items=_describe(db, leads), total=total, offset=offset, limit=limit)
+
+
+@router.get("/leads/{lead_id}", response_model=schemas.Lead)
+def get_lead(
+    lead_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """One lead with its conversation details (for a lead opened from the lead list)."""
+    require_role(current_user, PERSONNEL_ROLES)
+    lead = db.get(models.Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found.")
+    return _describe(db, [lead])[0]
 
 
 @router.post("/leads", response_model=schemas.Lead, status_code=201)

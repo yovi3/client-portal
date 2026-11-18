@@ -85,3 +85,30 @@ def test_leadbase_leads_cannot_be_deleted_here(anonymous, staff):
     send(anonymous, lb_lead())
     lead = staff.get("/leads").json()[0]
     assert staff.delete(f"/leads/{lead['id']}").status_code == 409
+
+
+def test_lead_list_pages_sorts_and_searches(anonymous, staff):
+    send(anonymous, *[lb_lead(serial=2000 + i, number=str(71000 + i), phone=f"201555{i:04d}",
+                              first_name=f"Ann{i}", last_name="Zed" if i % 2 else "Abel") for i in range(7)])
+    page = staff.get("/leads/page?limit=3&sort=lead_number&direction=asc").json()
+    assert page["total"] == 7 and [l["lead_number"] for l in page["items"]] == ["71000", "71001", "71002"]
+    nxt = staff.get("/leads/page?limit=3&offset=3&sort=lead_number&direction=asc").json()
+    assert [l["lead_number"] for l in nxt["items"]] == ["71003", "71004", "71005"]
+    assert all(l["conversation_id"] for l in page["items"])        # same details as the full list
+    send(anonymous, lb_lead(serial=2999, number="71999", first_name=None, last_name=None, phone=None))
+    by_name = staff.get("/leads/page?sort=name&direction=asc").json()["items"]
+    assert by_name[0]["last_name"] == "Abel" and by_name[-1]["last_name"] is None   # no name goes last
+    by_name_desc = staff.get("/leads/page?sort=name&direction=desc").json()["items"]
+    assert by_name_desc[0]["last_name"] == "Zed" and by_name_desc[-1]["last_name"] is None
+    assert staff.get("/leads/page?q=Zed").json()["total"] == 3
+    assert staff.get("/leads/page?q=5550004").json()["items"][0]["lead_number"] == "71004"  # by phone digits
+    assert staff.get("/leads/page?q=Ann2 Abel").json()["total"] == 1                        # first + last name
+
+
+def test_single_lead_with_its_details(anonymous, staff):
+    send(anonymous, lb_lead(status="Rejected"))
+    lead = staff.get("/leads?show=all").json()[0]
+    one = staff.get(f"/leads/{lead['id']}").json()
+    assert one["lead_number"] == "70001" and one["conversation_id"] == lead["conversation_id"]
+    assert staff.get("/leads/999999").status_code == 404
+    assert staff.get("/leads/page").status_code == 200   # still the list, not lead "page"

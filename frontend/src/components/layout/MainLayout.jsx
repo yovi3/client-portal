@@ -1,4 +1,8 @@
 import { useState } from "react";
+
+// Whether the sidebar shows icons only. Remembered in this browser.
+const COLLAPSE_KEY = "dssc.sidebarCollapsed";
+const readCollapsed = () => { try { return localStorage.getItem(COLLAPSE_KEY) === "1"; } catch { return false; } };
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -10,10 +14,17 @@ import Sidebar from "./Sidebar";
 // only the page scrolls. On phones the sidebar opens as a drawer instead.
 export default function MainLayout({ children }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const toggleCollapsed = () => setCollapsed((c) => {
+    try { localStorage.setItem(COLLAPSE_KEY, c ? "0" : "1"); } catch { /* storage unavailable */ }
+    return !c;
+  });
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <Header
+        sidebarCollapsed={collapsed}
+        onToggleSidebar={toggleCollapsed}
         mobileMenuTrigger={
           <Button
             variant="ghost"
@@ -29,7 +40,7 @@ export default function MainLayout({ children }) {
 
       <div className="flex min-h-0 flex-1">
         <div className="hidden md:block shrink-0">
-          <Sidebar />
+          <Sidebar collapsed={collapsed} />
         </div>
 
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
