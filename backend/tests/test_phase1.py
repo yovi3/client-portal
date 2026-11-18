@@ -334,3 +334,21 @@ def test_new_text_finds_leads_by_phone_digits(staff):
     found = staff.get("/leads/page?q=2013107777").json()["items"]
     assert [l["lead_number"] for l in found] == ["48100"]
     assert staff.get("/leads/page?q=310-77").json()["total"] == 1             # part of a number, with a dash
+
+
+def test_number_texted_for_a_lead_is_found_and_shown(staff):
+    lead = make_lead(staff, number="48200", phone="(201) 555-0300")           # LeadBase's number
+    start = staff.post("/conversations/start", json={"phone": "(973) 555-0444", "lead_id": lead["id"]}).json()
+    # The other number finds the lead too, and the lead says where texts really go.
+    found = staff.get("/leads/page?q=9735550444").json()["items"]
+    assert [l["lead_number"] for l in found] == ["48200"]
+    one = staff.get(f"/leads/{lead['id']}").json()
+    # The lead's own number stays the default; the other number is listed too.
+    assert one["conversation_phone"] == "+12015550300"
+    assert [c["phone"] for c in one["conversations"]] == ["+12015550300", "+19735550444"]
+    assert one["conversations"][1]["id"] == start["conversation"]["id"]
+    # New text can tell, before choosing, that the number already has a conversation.
+    hit = staff.get("/conversations/lookup?phone=973-555-0444").json()["conversation"]
+    assert hit["id"] == start["conversation"]["id"] and hit["lead"]["lead_number"] == "48200"
+    assert staff.get("/conversations/lookup?phone=973-555-0999").json()["conversation"] is None
+    assert staff.get("/conversations/lookup?phone=12").status_code == 400

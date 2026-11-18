@@ -69,6 +69,23 @@ export default function NewTextDialog({ open, onClose }) {
   }, [text, open]);
 
   const fullNumber = isFullNumber(text);
+
+  // A full number: does it already have a conversation? Say so before anything is chosen.
+  const [existing, setExisting] = useState(null);
+  useEffect(() => {
+    setExisting(null);
+    if (!open || !fullNumber) return;
+    let cancelled = false;
+    apiFetch(`/conversations/lookup?phone=${encodeURIComponent(text)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) setExisting(d?.conversation || null); });
+    return () => { cancelled = true; };
+  }, [text, fullNumber, open]);
+  const openConversation = (conv) => {
+    onClose();
+    if (conv.lead) navigate(`/leads?lead=${conv.lead.id}&conversation=${conv.id}`);
+    else navigate(`/texts/${conv.id}`);
+  };
   const numberLabel = fullNumber ? formatPhone(`+1${digitsOf(text).slice(-10)}`) : null;
 
   const start = async (body) => {
@@ -88,7 +105,7 @@ export default function NewTextDialog({ open, onClose }) {
       if (data.note) toast.info(data.note);
       window.dispatchEvent(new Event("conversations-changed"));
       onClose();
-      if (data.lead_id) navigate(`/leads?lead=${data.lead_id}`);
+      if (data.lead_id) navigate(`/leads?lead=${data.lead_id}&conversation=${data.conversation.id}`);
       else navigate(`/texts/${data.conversation.id}`);
     } catch {
       setError("The server couldn't be reached. Try again.");
@@ -113,9 +130,9 @@ export default function NewTextDialog({ open, onClose }) {
   const hint = useMemo(() => {
     if (!text.trim()) return "Type a phone number, a name or a lead number.";
     if (searching) return "Searching…";
-    if (results.length === 0) return fullNumber ? "No lead has this number." : "No leads match.";
+    if (results.length === 0) return fullNumber ? (existing ? null : "No lead has this number.") : "No leads match.";
     return total > results.length ? `Showing ${results.length} of ${total} matching leads. Type more to narrow it down.` : null;
-  }, [text, searching, results, total, fullNumber]);
+  }, [text, searching, results, total, fullNumber, existing]);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -173,8 +190,20 @@ export default function NewTextDialog({ open, onClose }) {
             )}
             {hint && <p className="text-xs text-muted-foreground" aria-live="polite">{hint}</p>}
 
+            {/* A full number that already has a conversation: open that one */}
+            {fullNumber && existing && (
+              <div className="space-y-2 border-t border-border pt-3">
+                <p className="text-sm">
+                  {numberLabel} already has a conversation{existing.lead ? <> with <span className="font-medium">{existing.lead.name || "a lead"}</span> <LeadTag number={existing.lead.lead_number} /></> : " (not linked to a lead yet)"}.
+                </p>
+                <Button className="w-full justify-start" onClick={() => openConversation(existing)}>
+                  <MessageSquarePlus className="h-4 w-4" /> Open it
+                </Button>
+              </div>
+            )}
+
             {/* A full number: text it without a lead, or add it as a new lead */}
-            {fullNumber && !adding && (
+            {fullNumber && !existing && !adding && (
               <div className="space-y-2 border-t border-border pt-3">
                 <Button variant="outline" className="w-full justify-start" disabled={saving} onClick={() => start({ phone: text, no_lead: true })}>
                   <MessageSquarePlus className="h-4 w-4" /> Text {numberLabel} without a lead

@@ -138,6 +138,23 @@ def list_conversations(
     return _summaries(db, convs)
 
 
+@router.get("/conversations/lookup", response_model=schemas.ConversationLookup)
+def lookup_conversation(
+    phone: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """New text: does this number already have a conversation, and with whom?"""
+    require_role(current_user, PERSONNEL_ROLES)
+    normalized = normalize_phone(phone)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="That phone number isn't valid.")
+    conversation = conversation_service.find_by_phone(db, normalized)
+    if conversation and conversation.case_id and not settings.cases_enabled:
+        conversation = None  # cases are hidden for now
+    return schemas.ConversationLookup(conversation=_summaries(db, [conversation])[0] if conversation else None)
+
+
 @router.get("/conversations/{conversation_id}", response_model=schemas.ConversationSummary)
 def get_conversation(
     conversation_id: int,

@@ -519,6 +519,13 @@ class LeadUpdate(BaseModel):
     status: Optional[str] = None
 
 
+class LeadConversation(BaseModel):
+    id: int
+    phone: str
+    sms_opted_out: bool = False
+    last_message_at: Optional[datetime] = None
+
+
 class Lead(BaseModel):
     id: int
     lead_number: str
@@ -533,6 +540,9 @@ class Lead(BaseModel):
     # Set when the phone number already belongs to a conversation about something else.
     phone_note: Optional[str] = None
     last_message: Optional["ConversationLastMessage"] = None
+    # Every number this lead has a conversation with (usually one), most recent first.
+    conversations: List["LeadConversation"] = []
+    conversation_phone: Optional[str] = None  # the number texts actually go to (its conversation's)
     last_message_at: Optional[datetime] = None
     sms_opted_out: bool = False
     source: str = "manual"
@@ -771,3 +781,7 @@ class LeadPage(BaseModel):
     total: int
     offset: int
     limit: int
+
+
+class ConversationLookup(BaseModel):
+    conversation: Optional[ConversationSummary] = None

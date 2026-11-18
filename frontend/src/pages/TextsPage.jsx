@@ -24,7 +24,7 @@ export default function TextsPage() {
     const res = await apiFetch(`/conversations/${id}`);
     if (!res.ok) { setError(res.status === 404 ? "This conversation doesn't exist." : "The conversation couldn't be loaded."); return; }
     const data = await res.json();
-    if (data.kind === "lead" && data.lead) { navigate(`/leads?lead=${data.lead.id}`, { replace: true }); return; }
+    if (data.kind === "lead" && data.lead) { navigate(`/leads?lead=${data.lead.id}&conversation=${data.id}`, { replace: true }); return; }
     setConv(data);
   }, [id, navigate]);
 

@@ -247,7 +247,18 @@ export default function Leads() {
     const q = query.trim().toLowerCase();
     return shownLeads.filter((l) => !q || `${l.lead_number} ${l.name || ""} ${l.phone || ""}`.toLowerCase().includes(q));
   }, [shownLeads, query]);
-  const selected = shownLeads.find((l) => l.id === selectedId) || (!selectedId ? filtered[0] : null);
+  const selectedLead = shownLeads.find((l) => l.id === selectedId) || (!selectedId ? filtered[0] : null);
+  // A lead can have conversations with more than one number. ?conversation= picks one (New
+  // text uses it); otherwise the lead's own number. Everything below follows that choice.
+  const wantedConv = Number(searchParams.get("conversation")) || null;
+  const selected = useMemo(() => {
+    if (!selectedLead) return null;
+    const convs = selectedLead.conversations || [];
+    const pick = convs.find((c) => c.id === wantedConv) || convs.find((c) => c.id === selectedLead.conversation_id);
+    if (!pick) return selectedLead;
+    return { ...selectedLead, conversation_id: pick.id, conversation_phone: pick.phone, sms_opted_out: pick.sms_opted_out };
+  }, [selectedLead, wantedConv]);
+  const pickConversation = (id) => setSearchParams({ lead: String(selected.id), conversation: String(id) });
 
   const openLead = useCallback((lead) => setSearchParams({ lead: String(lead.id) }), [setSearchParams]);
   const showList = () => setSearchParams({});
@@ -335,8 +346,8 @@ export default function Leads() {
         <h3 className="text-sm font-semibold">Texts</h3>
         {selected.sms_opted_out ? (
           <span className="text-xs font-medium text-warning">Opted out (replied STOP)</span>
-        ) : selected.phone ? (
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Smartphone className="h-3 w-3" /> <span className="tabular">{formatPhone(selected.phone)}</span></span>
+        ) : (selected.conversation_phone || selected.phone) ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Smartphone className="h-3 w-3" /> <span className="tabular">{formatPhone(selected.conversation_phone || selected.phone)}</span></span>
         ) : null}
       </div>
       <ConversationThread key={selected.conversation_id} conversationId={selected.conversation_id} contactName={selected.first_name || selected.name} optedOut={selected.sms_opted_out} />
@@ -409,9 +420,26 @@ export default function Leads() {
                         {selected.source === "lawbase" ? ". From LeadBase" : ". Typed in by hand"}
                         {selected.language && selected.language.toLowerCase() !== "english" ? `. Speaks ${selected.language}` : ""}
                       </p>
-                      {selected.phone && !selected.sms_opted_out && (
+                      {(selected.conversations || []).length > 1 ? (
+                        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          <Smartphone className="h-3 w-3" />
+                          <label htmlFor="texts-with">Texts with</label>
+                          <select id="texts-with" value={selected.conversation_id} onChange={(e) => pickConversation(e.target.value)}
+                            className="h-7 rounded-md border border-input bg-card px-2 text-xs text-foreground">
+                            {selected.conversations.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {formatPhone(c.phone)}{c.phone === selected.phone ? " (LeadBase number)" : ""}{c.sms_opted_out ? " (opted out)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <span>{selected.conversations.length} numbers</span>
+                        </p>
+                      ) : (selected.conversation_phone || selected.phone) && !selected.sms_opted_out && (
                         <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Smartphone className="h-3 w-3" /> Texts go to <span className="tabular">{formatPhone(selected.phone)}</span>
+                          <Smartphone className="h-3 w-3" /> Texts go to <span className="tabular">{formatPhone(selected.conversation_phone || selected.phone)}</span>
+                          {selected.conversation_phone && selected.phone && selected.conversation_phone !== selected.phone && (
+                            <span>(LeadBase has {formatPhone(selected.phone)})</span>
+                          )}
                         </p>
                       )}
                       {selected.sms_opted_out && (

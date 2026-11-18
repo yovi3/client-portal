@@ -102,8 +102,13 @@ def _describe(db: Session, leads: List[models.Lead]) -> List[schemas.Lead]:
         # The conversation for the lead's current number, else its most recent one.
         conv = next((c for c in own if c.phone == lead.phone), None) or (
             max(own, key=lambda c: c.last_message_at or c.created_at) if own else None)
+        # All of the lead's numbers: the default one first, then the most recently used.
+        ordered = sorted(own, key=lambda c: (c is not conv, -((c.last_message_at or c.created_at).timestamp() if (c.last_message_at or c.created_at) else 0)))
+        item.conversations = [schemas.LeadConversation(id=c.id, phone=c.phone, sms_opted_out=bool(c.sms_opted_out),
+                                                       last_message_at=c.last_message_at) for c in ordered]
         if conv:
             item.conversation_id = conv.id
+            item.conversation_phone = conv.phone
             item.sms_opted_out = bool(conv.sms_opted_out)
             item.last_message_at = conv.last_message_at
             last = last_by_conv.get(conv.id)
@@ -188,6 +193,10 @@ def lead_page(
         digits = "".join(ch for ch in text if ch.isdigit())
         if len(digits) >= 3:
             conditions.append(models.Lead.phone.like(f"%{digits}%"))
+            # ...or any number the lead has a conversation with (it may differ from LeadBase's)
+            conditions.append(models.Lead.id.in_(
+                db.query(models.Conversation.lead_id).filter(
+                    models.Conversation.lead_id.isnot(None), models.Conversation.phone.like(f"%{digits}%"))))
         # "Dana Ng" matches first and last name together
         parts = text.split()
         if len(parts) >= 2:
