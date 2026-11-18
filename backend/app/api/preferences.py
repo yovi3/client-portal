@@ -20,6 +20,8 @@ def update_appearance(
         user.theme = payload.theme
     if payload.text_size is not None:
         user.text_size = payload.text_size
+    if payload.panel_colors is not None:
+        user.panel_colors = payload.panel_colors
     db.commit()
     db.refresh(user)
     return user

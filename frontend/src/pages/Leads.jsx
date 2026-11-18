@@ -405,19 +405,19 @@ export default function Leads() {
                   {selected.conversation_id ? (
                     layout === "docs-top" ? (
                       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                        <section className="flex max-h-[40%] min-h-0 shrink-0 flex-col border-b border-border bg-muted/30" aria-label="Documents">{documentsPanel}</section>
+                        <section className="flex max-h-[40%] min-h-0 shrink-0 flex-col border-b border-border bg-[var(--docs-surface)]" aria-label="Documents">{documentsPanel}</section>
                         {thread}
                       </div>
                     ) : layout === "texts" ? (
                       <div className="relative flex min-h-0 min-w-0 flex-1">
                         {thread}
                         {docsOpen && (
-                          <aside className="absolute inset-y-0 right-0 z-10 flex w-80 flex-col border-l border-border bg-card shadow-xl xl:w-96" aria-label="Documents">{documentsPanel}</aside>
+                          <aside className="absolute inset-y-0 right-0 z-10 flex w-80 flex-col border-l border-border bg-[var(--docs-surface)] shadow-xl xl:w-96" aria-label="Documents">{documentsPanel}</aside>
                         )}
                       </div>
                     ) : (
                       <div className={`flex min-h-0 min-w-0 flex-1 ${layout === "docs-right" ? "flex-row-reverse" : ""}`}>
-                        <aside className={`flex w-72 shrink-0 flex-col border-border bg-muted/30 xl:w-80 ${layout === "docs-right" ? "border-l" : "border-r"}`} aria-label="Documents">{documentsPanel}</aside>
+                        <aside className={`flex w-72 shrink-0 flex-col border-border bg-[var(--docs-surface)] xl:w-80 ${layout === "docs-right" ? "border-l" : "border-r"}`} aria-label="Documents">{documentsPanel}</aside>
                         {thread}
                       </div>
                     )

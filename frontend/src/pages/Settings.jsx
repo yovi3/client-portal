@@ -12,6 +12,11 @@ const THEMES = [
   { key: "dark", label: "Dark", icon: Moon, hint: "Light text on dark backgrounds, easier at night" },
   { key: "system", label: "Match my computer", icon: Monitor, hint: "Follows the Windows light or dark setting" },
 ];
+const PANELS = [
+  { key: "distinct", label: "Distinct", hint: "Documents warm sand, texts soft blue" },
+  { key: "soft", label: "Soft", hint: "Documents light gray, texts white" },
+  { key: "plain", label: "Plain", hint: "Both white" },
+];
 const SIZES = [
   { key: "normal", label: "Normal", sample: "text-sm" },
   { key: "large", label: "Larger", sample: "text-base" },
@@ -40,6 +45,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const theme = user?.theme || "system";
   const textSize = user?.text_size || "normal";
+  const panelColors = user?.panel_colors || "distinct";
 
   const save = async (change) => {
     setSaving(true);
@@ -94,6 +100,24 @@ export default function Settings() {
             ))}
           </div>
           <p className="text-xs text-muted-foreground">Larger makes all text in DSS Connect about one size bigger.</p>
+        </section>
+
+        <section aria-labelledby="panels-heading" className="space-y-3">
+          <h2 id="panels-heading" className="text-base font-semibold">Panel colors</h2>
+          <p className="text-xs text-muted-foreground">How a lead's documents and texts are told apart when they're side by side.</p>
+          <div role="radiogroup" aria-labelledby="panels-heading" className="flex flex-col gap-3 sm:flex-row">
+            {PANELS.map(({ key, label, hint }) => (
+              <Choice key={key} label={label} selected={panelColors === key} onSelect={() => !saving && panelColors !== key && save({ panel_colors: key })}>
+                {/* a small preview: documents on the left, texts on the right, in this choice's colors */}
+                <span data-panel-colors={key} className="flex h-10 w-full overflow-hidden rounded border border-border" aria-hidden>
+                  <span className="w-2/5 border-r border-border bg-[var(--docs-surface)]" />
+                  <span className="flex-1 bg-[var(--texts-surface)]" />
+                </span>
+                <span className="font-semibold">{label}</span>
+                <span className="text-xs text-muted-foreground">{hint}</span>
+              </Choice>
+            ))}
+          </div>
         </section>
 
         <section aria-labelledby="about-heading" className="space-y-1 border-t border-border pt-6">

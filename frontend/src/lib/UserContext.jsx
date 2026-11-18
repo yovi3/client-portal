@@ -34,8 +34,8 @@ export function UserProvider({ children }) {
 
   // Whoever is signed in sees their own colors and text size.
   useEffect(() => {
-    if (user) applyAppearance({ theme: user.theme, text_size: user.text_size });
-  }, [user?.theme, user?.text_size]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (user) applyAppearance({ theme: user.theme, text_size: user.text_size, panel_colors: user.panel_colors });
+  }, [user?.theme, user?.text_size, user?.panel_colors]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const logout = useCallback(async () => {
     try {

@@ -71,7 +71,7 @@ export default function ConversationThread({ conversationId, contactName, optedO
   const parts = preview ? countTextParts(preview) : 0;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--texts-surface)]">
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         {loading && <p className="text-sm text-muted-foreground">Loading messages…</p>}
         {!loading && messages.length === 0 && (

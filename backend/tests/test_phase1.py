@@ -281,6 +281,9 @@ def test_appearance_is_saved_per_person(staff, client_user):
     assert staff.get("/auth/me").json()["theme"] == "dark"
     assert client_user.get("/auth/me").json()["theme"] == "system"  # someone else's choice is untouched
     assert staff.patch("/me/appearance", json={"theme": "purple"}).status_code == 422
+    assert staff.get("/auth/me").json()["panel_colors"] == "distinct"
+    assert staff.patch("/me/appearance", json={"panel_colors": "plain"}).json()["panel_colors"] == "plain"
+    assert staff.patch("/me/appearance", json={"panel_colors": "rainbow"}).status_code == 422
 
 
 # ---------------------------------------------------------------- deleting a typed-in lead

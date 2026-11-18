@@ -191,3 +191,33 @@ html[data-text-size="large"] {
     }
   }
 }
+
+/* Documents and texts panels, told apart by color (Settings > Panel colors).
+   distinct: documents warm sand (from the firm bronze), texts soft blue.
+   soft: documents light gray, texts white. plain: both white.
+   The setting sits on <html>; the Settings previews set it on themselves, so each
+   preview shows its own colors in the current light or dark mode. */
+:root, [data-panel-colors="distinct"] {
+  --docs-surface: #F8F1E6;
+  --texts-surface: #EEF4FC;
+}
+[data-panel-colors="soft"] {
+  --docs-surface: #F3F4F6;
+  --texts-surface: var(--card);
+}
+[data-panel-colors="plain"] {
+  --docs-surface: var(--card);
+  --texts-surface: var(--card);
+}
+.dark, .dark [data-panel-colors="distinct"], .dark[data-panel-colors="distinct"] {
+  --docs-surface: #241E16;
+  --texts-surface: #13213B;
+}
+.dark [data-panel-colors="soft"], .dark[data-panel-colors="soft"] {
+  --docs-surface: #1C2840;
+  --texts-surface: var(--card);
+}
+.dark [data-panel-colors="plain"], .dark[data-panel-colors="plain"] {
+  --docs-surface: var(--card);
+  --texts-surface: var(--card);
+}

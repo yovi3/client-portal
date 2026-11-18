@@ -67,6 +67,7 @@ class User(BaseModel):
     last_azure_sync_at: Optional[datetime] = None
     theme: Optional[str] = "system"
     text_size: Optional[str] = "normal"
+    panel_colors: Optional[str] = "distinct"
 
     lawyer_profile: Optional[LawyerProfileBase] = None
     client_profile: Optional[ClientProfileBase] = None
@@ -723,6 +724,7 @@ class PublicFileRequest(BaseModel):
 class AppearanceUpdate(BaseModel):
     theme: Optional[Literal["light", "dark", "system"]] = None
     text_size: Optional[Literal["normal", "large"]] = None
+    panel_colors: Optional[Literal["distinct", "soft", "plain"]] = None
 
 
 # ========================================================

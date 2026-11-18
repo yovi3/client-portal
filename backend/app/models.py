@@ -44,6 +44,8 @@ class User(Base):
     # (match the computer); text_size is normal or large.
     theme = Column(String, nullable=False, default="system", server_default="system")
     text_size = Column(String, nullable=False, default="normal", server_default="normal")
+    # How the documents and texts panels are told apart: distinct (two tints), soft, plain.
+    panel_colors = Column(String, nullable=False, default="distinct", server_default="distinct")
     role = Column(String, nullable=False) # 'lawyer', 'client', 'admin', 'accountant'
     aad_object_id = Column(String, unique=True, index=True, nullable=True)
     auth_provider = Column(String, nullable=False, default="local")
