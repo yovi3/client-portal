@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AlertCircle, ArrowDown, ArrowUp, FileDown, FileUp, Filter, FolderOpen, List, Loader2, MessagesSquare, MoreHorizontal,
-  PanelBottom, PanelLeft, PanelRight, Pencil, Plus, Search, Smartphone, Trash2, X,
+  PanelBottom, PanelLeft, PanelRight, Pencil, Plus, RefreshCw, Search, Smartphone, Trash2, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import MainLayout from "@/components/layout/MainLayout";
@@ -255,6 +255,34 @@ export default function Leads() {
   const bump = (lead) => lead?.conversation_id && setActivity((p) => ({ ...p, [lead.conversation_id]: (p[lead.conversation_id] || 0) + 1 }));
   const refreshAll = useCallback(() => { loadActive(); setListVersion((v) => v + 1); }, [loadActive]);
 
+  // "Load leads": ask the bridge on robo to sync now, then wait (up to 30 s) until it has.
+  const [syncing, setSyncing] = useState(false);
+  const loadLeadsNow = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiFetch("/lead-sync/request", { method: "POST" });
+      if (!res.ok) throw new Error();
+      const asked = new Date((await res.json()).requested_at);
+      const started = Date.now();
+      while (Date.now() - started < 30_000) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const st = await apiFetch("/lead-sync/status").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        if (st?.finished_at && new Date(st.finished_at) >= asked) {
+          refreshAll();
+          const r = st.result || {};
+          const changed = (r.updated || 0) + (r.merged_with_typed_in || 0);
+          toast.success(r.created || changed ? `Leads loaded: ${r.created || 0} new, ${changed} updated` : "Leads loaded: already up to date");
+          return;
+        }
+      }
+      toast.warning("LeadBase didn't answer within 30 seconds. Leads still load on their own every minute.");
+    } catch {
+      toast.error("Couldn't ask for a sync. Try again in a moment.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const deleteLead = useCallback(async (lead) => {
     if (!window.confirm(`Delete lead ${lead.lead_number}${lead.name ? ` (${lead.name})` : ""}? Its texts and documents are kept, and its conversation goes back to Needs assigning.`)) return;
     const res = await apiFetch(`/leads/${lead.id}`, { method: "DELETE" });
@@ -328,6 +356,9 @@ export default function Leads() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={loadLeadsNow} disabled={syncing} title="Get the latest leads from LeadBase now (they also load every minute on their own)">
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Loading…" : "Load leads"}
+            </Button>
             <Button variant="outline" onClick={view === "list" ? showConversations : showList}>
               {view === "list" ? <><MessagesSquare className="h-4 w-4" /> Conversations</> : <><List className="h-4 w-4" /> Lead list</>}
             </Button>

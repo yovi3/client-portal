@@ -26,6 +26,19 @@ BEGIN TRY
 END TRY BEGIN CATCH SET @result = N'FAIL  dssc.GetLeads: ' + ERROR_MESSAGE(); END CATCH;
 PRINT @result;
 
+-- The way the running bridge calls it: with every lead the portal already knows.
+DECLARE @known nvarchar(max) = (SELECT STRING_AGG(CAST(Serial AS nvarchar(20)), N',') FROM @leads);
+DECLARE @started datetime2 = SYSDATETIME();
+DELETE FROM @leads;
+BEGIN TRY
+    INSERT INTO @leads EXEC dssc.GetLeads @KnownSerials = @known;
+    DECLARE @ms int = DATEDIFF(millisecond, @started, SYSDATETIME());
+    SELECT @result = CONCAT(CASE WHEN @ms <= 10000 THEN 'PASS' ELSE 'FAIL' END,
+        '  with ', (SELECT COUNT(*) FROM STRING_SPLIT(ISNULL(@known, N''), N',')), ' known leads it returned ', COUNT(*),
+        ' leads in ', @ms, ' ms (must be under 10,000)') FROM @leads;
+END TRY BEGIN CATCH SET @result = N'FAIL  dssc.GetLeads with known leads: ' + ERROR_MESSAGE(); END CATCH;
+PRINT @result;
+
 BEGIN TRY
     DECLARE @n int = (SELECT COUNT(*) FROM Lawbase12.dbo.PB0);
     PRINT 'FAIL  reading Lawbase12.dbo.PB0 directly was allowed. It should be refused.';

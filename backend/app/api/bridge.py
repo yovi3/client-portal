@@ -5,6 +5,7 @@ here. Leads are matched on LawBase's own key (PB0.Serial), so a lead is never ad
 twice; a lead someone typed in by hand with the same lead number is taken over by the
 LawBase version. Every request must carry the bridge's secret key.
 """
+import asyncio
 import datetime
 import hmac
 from typing import List, Optional
@@ -17,12 +18,21 @@ from .. import database, models, schemas
 from ..config import get_settings
 from ..phone import normalize_phone
 from ..services import conversations
-from .utils import PERSONNEL_ROLES
+from ..deps import get_current_user
+from .utils import PERSONNEL_ROLES, require_role
 
 router = APIRouter(prefix="/bridge", tags=["bridge"])
+# For staff: ask for a sync now and see when it finished ("Load leads" button).
+staff_router = APIRouter(prefix="/lead-sync", tags=["bridge"])
 settings = get_settings()
 
 ACTIVE_LB_STATUSES = {"new", "in progress"}
+
+# "Load leads": the bridge keeps one request open (wait_for_request). When staff ask for
+# a sync, that request is answered at once and the bridge syncs straight away, instead of
+# at its next minute. The portal never connects to robo; robo always connects out.
+_sync_wanted = asyncio.Event()
+_sync_state = {"requested_at": None, "finished_at": None, "result": None}
 
 
 def require_bridge(x_bridge_key: Optional[str] = Header(default=None)) -> None:
@@ -45,6 +55,18 @@ def portal_status(lb_status: Optional[str]) -> str:
 def _clean(value: Optional[str]) -> Optional[str]:
     value = (value or "").strip()
     return value or None
+
+
+@router.get("/wait-for-request", dependencies=[Depends(require_bridge)])
+async def wait_for_request(seconds: int = 25):
+    """The bridge asks "anything for me?" and the portal holds the question for up to
+    `seconds`. Answered at once when someone clicks Load leads."""
+    try:
+        await asyncio.wait_for(_sync_wanted.wait(), timeout=max(1, min(seconds, 55)))
+    except asyncio.TimeoutError:
+        return {"sync": False}
+    _sync_wanted.clear()
+    return {"sync": True}
 
 
 @router.get("/known-leads", dependencies=[Depends(require_bridge)])
@@ -129,4 +151,28 @@ def receive_leads(batch: schemas.BridgeLeadBatch, db: Session = Depends(database
                 conv.contact_name = lead.name
 
     db.commit()
-    return schemas.BridgeLeadResult(received=len(batch.leads), skipped=skipped, **result)
+    outcome = schemas.BridgeLeadResult(received=len(batch.leads), skipped=skipped, **result)
+    _sync_state["finished_at"] = now
+    _sync_state["result"] = outcome.model_dump(exclude={"skipped"})
+    return outcome
+
+
+def _iso(value):
+    return value.isoformat() if value else None
+
+
+@staff_router.post("/request")
+async def request_sync(current_user: models.User = Depends(get_current_user)):
+    """Staff: load leads from LawBase now rather than at the next minute."""
+    require_role(current_user, PERSONNEL_ROLES)
+    _sync_state["requested_at"] = datetime.datetime.now(datetime.timezone.utc)
+    _sync_wanted.set()
+    return {"requested_at": _iso(_sync_state["requested_at"])}
+
+
+@staff_router.get("/status")
+def sync_status(current_user: models.User = Depends(get_current_user)):
+    """When leads were last loaded from LawBase, and what changed."""
+    require_role(current_user, PERSONNEL_ROLES)
+    return {"requested_at": _iso(_sync_state["requested_at"]), "finished_at": _iso(_sync_state["finished_at"]),
+            "result": _sync_state["result"]}

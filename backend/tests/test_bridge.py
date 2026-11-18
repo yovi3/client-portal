@@ -112,3 +112,17 @@ def test_single_lead_with_its_details(anonymous, staff):
     assert one["lead_number"] == "70001" and one["conversation_id"] == lead["conversation_id"]
     assert staff.get("/leads/999999").status_code == 404
     assert staff.get("/leads/page").status_code == 200   # still the list, not lead "page"
+
+
+def test_load_leads_button_wakes_the_bridge(anonymous, staff, client_user):
+    # Nothing asked for: the bridge's waiting request comes back empty.
+    assert anonymous.get("/bridge/wait-for-request?seconds=1", headers=KEY).json() == {"sync": False}
+    assert anonymous.get("/bridge/wait-for-request?seconds=1").status_code == 401     # bridge key needed
+    assert client_user.post("/lead-sync/request").status_code == 403                   # staff only
+    # Staff click Load leads: the bridge's next wait answers at once.
+    requested = staff.post("/lead-sync/request").json()["requested_at"]
+    assert anonymous.get("/bridge/wait-for-request?seconds=5", headers=KEY).json() == {"sync": True}
+    # The bridge syncs; the status shows it finished after the request, with what changed.
+    send(anonymous, lb_lead())
+    status = staff.get("/lead-sync/status").json()
+    assert status["finished_at"] >= requested and status["result"]["created"] == 1

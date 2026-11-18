@@ -23,12 +23,28 @@ GO
 
 /* Leads for the portal: everything New or In Progress in LeadBase, plus any lead the
    portal already has (so it learns when a lead moves on to Accepted, Rejected or Closed).
-   @KnownSerials is a comma-separated list of PB0.Serial values. */
+   @KnownSerials is a comma-separated list of PB0.Serial values.
+
+   The known Serials go into a small keyed table first; the two lists are then looked up
+   separately and combined. (Comparing every PB0 row with the split list directly took
+   over a minute with a few hundred known leads.) */
 CREATE OR ALTER PROCEDURE dssc.GetLeads
     @KnownSerials nvarchar(max) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    DECLARE @known TABLE (Serial int NOT NULL PRIMARY KEY);
+    INSERT INTO @known (Serial)
+    SELECT DISTINCT TRY_CAST(LTRIM(RTRIM(value)) AS int)
+    FROM STRING_SPLIT(ISNULL(@KnownSerials, N''), N',')
+    WHERE TRY_CAST(LTRIM(RTRIM(value)) AS int) IS NOT NULL;
+
+    DECLARE @wanted TABLE (Serial int NOT NULL PRIMARY KEY);
+    INSERT INTO @wanted (Serial)
+    SELECT p.Serial FROM Lawbase12.dbo.PB0 AS p WHERE p.Status IN (N'New', N'In Progress')
+    UNION
+    SELECT k.Serial FROM @known AS k;
 
     SELECT
         p.Serial,
@@ -45,20 +61,15 @@ BEGIN
         NULLIF(c.phone, '')                    AS Phone,
         NULLIF(c.Email, '')                    AS Email,
         NULLIF(c.Language, '')                 AS Language
-    FROM Lawbase12.dbo.PB0 AS p
+    FROM @wanted AS w
+    JOIN Lawbase12.dbo.PB0 AS p ON p.Serial = w.Serial
     OUTER APPLY (
         SELECT TOP (1) fname, LName, phone, Email, Language
         FROM Lawbase12.dbo.PB2
         WHERE CaseSerial = p.Serial
         ORDER BY Serial
     ) AS c
-    LEFT JOIN Lawbase12.dbo.User_Profile AS u ON u.Login = p.AssignedTo
-    WHERE p.Status IN (N'New', N'In Progress')
-       OR p.Serial IN (
-            SELECT TRY_CAST(LTRIM(RTRIM(value)) AS int)
-            FROM STRING_SPLIT(ISNULL(@KnownSerials, N''), N',')
-            WHERE LTRIM(RTRIM(value)) <> N''
-       );
+    LEFT JOIN Lawbase12.dbo.User_Profile AS u ON u.Login = p.AssignedTo;
 END;
 GO
 
