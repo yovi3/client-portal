@@ -9,6 +9,7 @@ import Documents from "@/pages/Documents";
 import Messages from "@/pages/Messages";
 import Leads from "@/pages/Leads";
 import NeedsAssigning from "@/pages/NeedsAssigning";
+import TextsPage from "@/pages/TextsPage";
 import UploadPage from "@/pages/UploadPage";
 import Settings from "@/pages/Settings";
 import AzureCallback from './pages/AzureCallback'
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/messages" element={<RequireAuth><Messages /></RequireAuth>} />
         <Route path="/leads" element={<RequireRole allowedRoles={personnelRoles}><Leads /></RequireRole>} />
         <Route path="/needs-assigning" element={<RequireRole allowedRoles={personnelRoles}><NeedsAssigning /></RequireRole>} />
+        <Route path="/texts/:id" element={<RequireRole allowedRoles={personnelRoles}><TextsPage /></RequireRole>} />
         {/* The old SMS inbox; its texts now live in conversations. */}
         <Route path="/case-inbox" element={<Navigate to="/needs-assigning" replace />} />
         <Route path="/auth/callback" element={<AzureCallback />} />

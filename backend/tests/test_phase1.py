@@ -307,3 +307,30 @@ def test_password_sign_in_can_be_switched_off(anonymous, monkeypatch):
     assert anonymous.get("/auth/options").json()["password_login"] is False
     res = anonymous.post("/auth/login", json={"email": "staff@example.com", "password": "test-password-1"})
     assert res.status_code == 403 and "Microsoft" in res.json()["detail"]
+
+
+# ---------------------------------------------------------------- New text to anyone
+
+def test_new_text_without_a_lead(staff):
+    res = staff.post("/conversations/start", json={"phone": "201-310-0000", "no_lead": True, "contact_name": "Walk-in"})
+    assert res.status_code == 200 and res.json()["lead_id"] is None and not res.json()["existing"]
+    conv = res.json()["conversation"]
+    assert staff.get(f"/conversations/{conv['id']}").json()["contact_name"] == "Walk-in"
+    assert len(conversations(staff, "unassigned")) == 1                      # waits in Needs assigning
+    # Texting it works like any other conversation.
+    with staff.websocket_connect(f"/ws/conversation/{conv['id']}") as ws:
+        ws.send_json({"content": "Hi, this is DSS returning your call."})
+        assert ws.receive_json()["sms_status"] == "sending"
+    # Asking again for the same number opens the same conversation.
+    again = staff.post("/conversations/start", json={"phone": "(201) 310-0000", "no_lead": True}).json()
+    assert again["existing"] and again["conversation"]["id"] == conv["id"]
+    # Exactly one choice is required.
+    assert staff.post("/conversations/start", json={"phone": "201-310-0000"}).status_code == 400
+    assert staff.post("/conversations/start", json={"phone": "201-310-0000", "no_lead": True, "lead_id": 1}).status_code == 400
+
+
+def test_new_text_finds_leads_by_phone_digits(staff):
+    make_lead(staff, number="48100", phone="(201) 310-7777")
+    found = staff.get("/leads/page?q=2013107777").json()["items"]
+    assert [l["lead_number"] for l in found] == ["48100"]
+    assert staff.get("/leads/page?q=310-77").json()["total"] == 1             # part of a number, with a dash

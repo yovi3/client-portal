@@ -138,6 +138,22 @@ def list_conversations(
     return _summaries(db, convs)
 
 
+@router.get("/conversations/{conversation_id}", response_model=schemas.ConversationSummary)
+def get_conversation(
+    conversation_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """One conversation's summary: its number, name, and what it's linked to."""
+    require_role(current_user, PERSONNEL_ROLES)
+    conversation = db.get(models.Conversation, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    if conversation.case_id and not settings.cases_enabled:
+        raise HTTPException(status_code=403, detail="Cases are not turned on yet.")
+    return _summaries(db, [conversation])[0]
+
+
 @router.get("/conversations/{conversation_id}/messages", response_model=List[schemas.Message])
 def conversation_messages(
     conversation_id: int,
@@ -226,7 +242,8 @@ def start_conversation(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """New text (task 1.5): open the conversation for a number, linked to a lead.
+    """New text (task 1.5): open the conversation for a number, linked to a lead, or to
+    no lead at all (no_lead): anyone can be texted, and the number can be linked later.
 
     A number that already has a conversation opens that one rather than a second.
     """
@@ -234,10 +251,23 @@ def start_conversation(
     phone = normalize_phone(payload.phone)
     if not phone:
         raise HTTPException(status_code=400, detail="That phone number isn't valid. Use 10 digits, like (201) 555-0123.")
-    if (payload.lead_id is None) == (payload.new_lead is None):
-        raise HTTPException(status_code=400, detail="Choose an existing lead or add a new one.")
+    choices = sum([payload.lead_id is not None, payload.new_lead is not None, payload.no_lead])
+    if choices != 1:
+        raise HTTPException(status_code=400, detail="Choose an existing lead, add a new one, or text without a lead.")
 
     existing = conversation_service.find_by_phone(db, phone)
+    if payload.no_lead:
+        # Opens the number's conversation whatever it's linked to; a new number starts unlinked.
+        conversation = existing or conversation_service.get_or_create(db, phone, contact_name=(payload.contact_name or "").strip() or None)
+        if not existing and payload.contact_name and not conversation.contact_name:
+            conversation.contact_name = payload.contact_name.strip()
+        conversation.dismissed_at = None
+        db.commit()
+        db.refresh(conversation)
+        return schemas.StartConversationResult(
+            conversation=_summaries(db, [conversation])[0], lead_id=conversation.lead_id, existing=existing is not None,
+            note="This number already has a conversation, so that one is opened." if existing else None,
+        )
     if existing and (existing.lead_id or existing.case_id):
         note = None
         if payload.lead_id is not None and existing.lead_id != payload.lead_id:

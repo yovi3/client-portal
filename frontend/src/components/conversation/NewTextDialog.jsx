@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertCircle, Loader2, Search } from "lucide-react";
+import { AlertCircle, ChevronRight, Loader2, MessageSquarePlus, Search, Smartphone, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,78 +9,87 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/api";
-import { useUser } from "@/lib/UserContext";
 import { formatPhone } from "@/lib/texting";
 import { LeadTag } from "@/pages/Leads";
 
-// New text (task 1.5): a phone number plus the lead it's about. Opens that lead's
-// conversation, ready to type. A number that already has a conversation opens that one.
+// New text (task 1.5). One box: type a phone number, a name or a lead number. Matching
+// leads (all of them, searched on the server, by phone digits too) appear right below;
+// pick one to open its conversation. A full phone number can also be texted without a
+// lead (it waits in Needs assigning until linked), or added as a new lead.
 
-const selectClass =
-  "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
+const digitsOf = (text) => (text || "").replace(/\D/g, "");
+// A US number the backend will accept: 10 digits, or 11 starting with 1.
+const isFullNumber = (text) => {
+  const d = digitsOf(text);
+  return /^\+?[\d\s().-]+$/.test(text.trim()) && (d.length === 10 || (d.length === 11 && d.startsWith("1")));
+};
 
 export default function NewTextDialog({ open, onClose }) {
   const navigate = useNavigate();
-  const { user } = useUser();
-  const [phone, setPhone] = useState("");
-  const [mode, setMode] = useState("existing");
-  const [leads, setLeads] = useState([]);
-  const [staff, setStaff] = useState([]);
-  const [query, setQuery] = useState("");
-  const [chosen, setChosen] = useState(null);
-  const [form, setForm] = useState({ lead_number: "", first_name: "", last_name: "", assigned_user_id: "" });
+  const inputRef = useRef(null);
+  const [text, setText] = useState("");
+  const [results, setResults] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [adding, setAdding] = useState(false); // the "add as a new lead" form
+  const [form, setForm] = useState({ lead_number: "", first_name: "", last_name: "" });
+  const [needNumberFor, setNeedNumberFor] = useState(null); // a lead without a mobile number
+  const [number, setNumber] = useState("");
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setPhone(""); setMode("existing"); setQuery(""); setChosen(null); setError(null);
-    setForm({ lead_number: "", first_name: "", last_name: "", assigned_user_id: user?.id ? String(user.id) : "" });
-    Promise.all([apiFetch("/leads"), apiFetch("/leads/staff")]).then(async ([l, s]) => {
-      if (l.ok) setLeads((await l.json()).filter((x) => x.status === "open"));
-      if (s.ok) setStaff(await s.json());
-    });
-  }, [open, user]);
+    setText(""); setResults([]); setTotal(0); setAdding(false); setNeedNumberFor(null); setNumber("");
+    setForm({ lead_number: "", first_name: "", last_name: "" }); setError(null);
+  }, [open]);
 
-  // Typing a number that belongs to a lead picks that lead for you.
+  // Search all leads as the person types (after a short pause).
   useEffect(() => {
-    const digits = phone.replace(/\D/g, "").slice(-10);
-    if (digits.length !== 10) return;
-    const match = leads.find((l) => (l.phone || "").replace(/\D/g, "").endsWith(digits));
-    if (match) { setMode("existing"); setChosen(match.id); }
-  }, [phone, leads]);
+    if (!open) return;
+    const q = text.trim();
+    const digits = digitsOf(q);
+    const looksLikeNumber = digits.length >= 3 && /^[\d\s().+-]+$/.test(q);
+    if (q.length < 2 && !looksLikeNumber) { setResults([]); setTotal(0); return; }
+    let cancelled = false;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      // Phone numbers are matched on their digits; a leading 1 is dropped (+1 201... = 201...).
+      const query = looksLikeNumber ? (digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits) : q;
+      apiFetch(`/leads/page?${new URLSearchParams({ q: query, limit: "8", sort: "created", direction: "desc" })}`)
+        .then((r) => (r.ok ? r.json() : { items: [], total: 0 }))
+        .then((page) => { if (!cancelled) { setResults(page.items); setTotal(page.total); } })
+        .finally(() => { if (!cancelled) setSearching(false); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [text, open]);
 
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return leads.filter((l) => !q || `${l.lead_number} ${l.name || ""} ${l.phone || ""}`.toLowerCase().includes(q)).slice(0, 6);
-  }, [leads, query]);
+  const fullNumber = isFullNumber(text);
+  const numberLabel = fullNumber ? formatPhone(`+1${digitsOf(text).slice(-10)}`) : null;
 
-  const setField = (f) => (e) => setForm((prev) => ({ ...prev, [f]: e.target.value }));
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError(null);
-    if (!phone.trim()) return setError("Enter the mobile number to text.");
-    if (mode === "existing" && !chosen) return setError("Choose the lead this is about, or add a new one.");
-    if (mode === "new" && !form.lead_number.trim()) return setError("Enter the LeadBase lead number.");
-    const body = mode === "existing"
-      ? { phone, lead_id: chosen }
-      : { phone, new_lead: { ...form, assigned_user_id: form.assigned_user_id ? Number(form.assigned_user_id) : null } };
+  const start = async (body) => {
     setSaving(true);
+    setError(null);
     try {
-      const res = await apiFetch("/conversations/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await apiFetch("/conversations/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return setError(typeof data.detail === "string" ? data.detail : "That didn't work. Try again.");
+      if (!res.ok) {
+        setError(typeof data.detail === "string" ? data.detail : "The conversation couldn't be opened.");
+        return;
+      }
       if (data.note) toast.info(data.note);
+      window.dispatchEvent(new Event("conversations-changed"));
       onClose();
       if (data.lead_id) navigate(`/leads?lead=${data.lead_id}`);
-      else toast.info("This number is linked to a case, which isn't shown during the intake rollout.");
-      window.dispatchEvent(new Event("conversations-changed"));
+      else navigate(`/texts/${data.conversation.id}`);
     } catch {
       setError("The server couldn't be reached. Try again.");
     } finally {
@@ -88,80 +97,123 @@ export default function NewTextDialog({ open, onClose }) {
     }
   };
 
+  const pickLead = (lead) => {
+    if (lead.conversation_id) {
+      onClose();
+      navigate(`/leads?lead=${lead.id}`);
+    } else if (lead.phone) {
+      start({ phone: lead.phone, lead_id: lead.id });
+    } else if (fullNumber) {
+      start({ phone: text, lead_id: lead.id });
+    } else {
+      setNeedNumberFor(lead); // ask for this lead's mobile number
+    }
+  };
+
+  const hint = useMemo(() => {
+    if (!text.trim()) return "Type a phone number, a name or a lead number.";
+    if (searching) return "Searching…";
+    if (results.length === 0) return fullNumber ? "No lead has this number." : "No leads match.";
+    return total > results.length ? `Showing ${results.length} of ${total} matching leads. Type more to narrow it down.` : null;
+  }, [text, searching, results, total, fullNumber]);
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={submit} noValidate>
-          <DialogHeader>
-            <DialogTitle>New text</DialogTitle>
-            <DialogDescription>Enter the number and choose the lead it's about. The conversation opens ready to type.</DialogDescription>
-          </DialogHeader>
+      <DialogContent className="sm:max-w-lg" onOpenAutoFocus={(e) => { e.preventDefault(); inputRef.current?.focus(); }}>
+        <DialogHeader>
+          <DialogTitle>New text</DialogTitle>
+          <DialogDescription>Find a lead by phone, name or lead number, or text any number.</DialogDescription>
+        </DialogHeader>
 
-          <div className="mt-4 space-y-1.5">
-            <Label htmlFor="nt_phone">Mobile number</Label>
-            <Input id="nt_phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(201) 555-0123" autoComplete="off" autoFocus />
+        {needNumberFor ? (
+          <div className="space-y-3">
+            <p className="text-sm">
+              <span className="font-medium">{needNumberFor.name || `Lead ${needNumberFor.lead_number}`}</span> has no mobile number yet. Which number should get the texts?
+            </p>
+            <Input aria-label="Mobile number" placeholder="(201) 555-0123" value={number} onChange={(e) => setNumber(e.target.value)} autoFocus />
+            {error && <p role="alert" className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4 shrink-0" /> {error}</p>}
+            <div className="flex justify-between gap-2">
+              <Button variant="ghost" onClick={() => { setNeedNumberFor(null); setError(null); }}>Back</Button>
+              <Button disabled={!isFullNumber(number) || saving} onClick={() => start({ phone: number, lead_id: needNumberFor.id })}>
+                {saving && <Loader2 className="h-4 w-4 animate-spin" />} Text this number
+              </Button>
+            </div>
           </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input ref={inputRef} aria-label="Number, name or lead number" placeholder="Number, name or lead number"
+                value={text} onChange={(e) => { setText(e.target.value); setAdding(false); setError(null); }} className="pl-9" />
+            </div>
 
-          <div className="mt-4 inline-flex rounded-md border border-border p-0.5" role="tablist" aria-label="Which lead">
-            {[["existing", "Existing lead"], ["new", "New lead"]].map(([key, label]) => (
-              <button key={key} type="button" role="tab" aria-selected={mode === key} onClick={() => { setMode(key); setError(null); }}
-                className={`rounded px-3 py-1.5 text-sm ${mode === key ? "bg-primary font-medium text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {mode === "existing" ? (
-            <div className="mt-3 space-y-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input aria-label="Search leads" placeholder="Search by lead number or name" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9" />
-              </div>
-              <div className="max-h-56 overflow-y-auto rounded-md border border-border" role="radiogroup" aria-label="Open leads">
-                {matches.length === 0 && <p className="px-3 py-4 text-sm text-muted-foreground">No open leads match. Add a new lead instead.</p>}
-                {matches.map((l) => (
-                  <label key={l.id} className={`flex cursor-pointer items-center gap-3 border-b border-border px-3 py-2 last:border-0 ${chosen === l.id ? "bg-accent" : "hover:bg-muted/50"}`}>
-                    <input type="radio" name="nt_lead" checked={chosen === l.id} onChange={() => setChosen(l.id)} className="accent-[var(--primary)]" />
-                    <LeadTag number={l.lead_number} />
-                    <span className="min-w-0 flex-1 truncate text-sm">{l.name || "No name"}</span>
-                    {l.phone && <span className="text-xs text-muted-foreground tabular">{formatPhone(l.phone)}</span>}
-                  </label>
+            {/* Matching leads */}
+            {results.length > 0 && (
+              <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border" aria-label="Matching leads">
+                {results.map((lead) => (
+                  <li key={lead.id}>
+                    <button type="button" onClick={() => pickLead(lead)} disabled={saving}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/60">
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium">{lead.name || "No name"}</span>
+                          <LeadTag number={lead.lead_number} />
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {lead.phone ? formatPhone(lead.phone) : "No mobile number"}
+                          {lead.lb_status ? `. ${lead.lb_status}` : ""}
+                          {lead.assigned_name || lead.assigned_user?.name ? `. ${lead.assigned_user?.name || lead.assigned_name}` : ""}
+                        </span>
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+                  </li>
                 ))}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-3 space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="nt_number">LeadBase lead number</Label>
-                <Input id="nt_number" value={form.lead_number} onChange={setField("lead_number")} inputMode="numeric" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="nt_first">First name</Label>
-                  <Input id="nt_first" value={form.first_name} onChange={setField("first_name")} autoComplete="off" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="nt_last">Last name</Label>
-                  <Input id="nt_last" value={form.last_name} onChange={setField("last_name")} autoComplete="off" />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="nt_assigned">Assigned to</Label>
-                <select id="nt_assigned" value={form.assigned_user_id} onChange={setField("assigned_user_id")} className={selectClass}>
-                  <option value="">Unassigned</option>
-                  {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-            </div>
-          )}
+              </ul>
+            )}
+            {hint && <p className="text-xs text-muted-foreground" aria-live="polite">{hint}</p>}
 
-          {error && <p role="alert" className="mt-3 flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4 shrink-0" /> {error}</p>}
-
-          <DialogFooter className="mt-6">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin" />} Open conversation</Button>
-          </DialogFooter>
-        </form>
+            {/* A full number: text it without a lead, or add it as a new lead */}
+            {fullNumber && !adding && (
+              <div className="space-y-2 border-t border-border pt-3">
+                <Button variant="outline" className="w-full justify-start" disabled={saving} onClick={() => start({ phone: text, no_lead: true })}>
+                  <MessageSquarePlus className="h-4 w-4" /> Text {numberLabel} without a lead
+                </Button>
+                <Button variant="outline" className="w-full justify-start" disabled={saving} onClick={() => setAdding(true)}>
+                  <UserPlus className="h-4 w-4" /> Add {numberLabel} as a new lead
+                </Button>
+                <p className="text-xs text-muted-foreground">Without a lead, the conversation waits in Needs assigning until it's linked to one.</p>
+              </div>
+            )}
+            {fullNumber && adding && (
+              <div className="space-y-3 rounded-md border border-border p-3">
+                <p className="flex items-center gap-2 text-sm font-medium"><Smartphone className="h-4 w-4" /> New lead for {numberLabel}</p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="nt_number">Lead number</Label>
+                    <Input id="nt_number" value={form.lead_number} onChange={(e) => setForm({ ...form, lead_number: e.target.value })} autoFocus />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="nt_first">First name</Label>
+                    <Input id="nt_first" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="nt_last">Last name</Label>
+                    <Input id="nt_last" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
+                  </div>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <Button variant="ghost" onClick={() => setAdding(false)}>Back</Button>
+                  <Button disabled={!form.lead_number.trim() || saving} onClick={() => start({ phone: text, new_lead: {
+                    lead_number: form.lead_number.trim(), first_name: form.first_name.trim() || null, last_name: form.last_name.trim() || null } })}>
+                    {saving && <Loader2 className="h-4 w-4 animate-spin" />} Add lead and text
+                  </Button>
+                </div>
+              </div>
+            )}
+            {error && <p role="alert" className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4 shrink-0" /> {error}</p>}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

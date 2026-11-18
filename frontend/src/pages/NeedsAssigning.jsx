@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Briefcase, ChevronDown, ChevronUp, Filter, Inbox, Loader2, Search } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AlertCircle, Briefcase, ChevronDown, ChevronUp, Filter, Inbox, Loader2, MessageSquare, Search } from "lucide-react";
 import { toast } from "sonner";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ async function postJson(path, body) {
 }
 
 export default function NeedsAssigning() {
+  const navigate = useNavigate();
   const { cases_enabled: casesEnabled } = useAppSettings();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -135,11 +137,14 @@ export default function NeedsAssigning() {
                   <p className="text-base font-semibold tabular">{formatPhone(conv.phone)}</p>
                   <p className="text-sm text-muted-foreground">
                     {conv.contact_name ? `${conv.contact_name}. ` : ""}
-                    {conv.message_count} {conv.message_count === 1 ? "text" : "texts"}, latest {timeAgo(conv.last_message_at)}
+                    {conv.message_count
+                      ? `${conv.message_count} ${conv.message_count === 1 ? "text" : "texts"}, latest ${timeAgo(conv.last_message_at)}`
+                      : "No texts yet"}
                     {conv.sms_opted_out && <span className="text-warning"> Opted out of texts.</span>}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/texts/${conv.id}`)}><MessageSquare className="h-4 w-4" /> Open</Button>
                   <Button size="sm" onClick={() => setLinkLeadFor(conv)}><Filter className="h-4 w-4" /> Link to lead</Button>
                   {casesEnabled && (
                     <Button size="sm" variant="outline" onClick={() => setLinkCaseFor(conv)}><Briefcase className="h-4 w-4" /> Link to case</Button>
@@ -197,7 +202,7 @@ export default function NeedsAssigning() {
   );
 }
 
-function LinkLeadDialog({ conv, onClose, onLinked }) {
+export function LinkLeadDialog({ conv, onClose, onLinked }) {
   const { user } = useUser();
   const [mode, setMode] = useState("existing");
   const [leads, setLeads] = useState([]);

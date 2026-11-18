@@ -616,10 +616,12 @@ class AppSettings(BaseModel):
 
 
 class StartConversationRequest(BaseModel):
-    """New text: a phone number plus an existing lead or a new one."""
+    """New text: a phone number, plus an existing lead, a new one, or neither (no_lead)."""
     phone: str = Field(min_length=1, max_length=40)
     lead_id: Optional[int] = None
     new_lead: Optional[NewLeadForConversation] = None
+    no_lead: bool = False  # text the number without a lead; it can be linked later
+    contact_name: Optional[str] = Field(default=None, max_length=120)
 
 
 class StartConversationResult(BaseModel):
