@@ -285,7 +285,7 @@ export default function Leads() {
 
   const documentsPanel = selected?.conversation_id && (
     <>
-      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
         <h3 className="text-sm font-semibold">Documents</h3>
         <div className="flex gap-1.5">
           <Button size="sm" variant="outline" className="h-8" onClick={() => setRequestFor(selected)}><FileUp className="h-4 w-4" /> Request</Button>
@@ -300,8 +300,19 @@ export default function Leads() {
       </div>
     </>
   );
+  // The texts panel: its own header bar (like Documents), then the conversation.
   const thread = selected?.conversation_id && (
-    <ConversationThread key={selected.conversation_id} conversationId={selected.conversation_id} contactName={selected.first_name || selected.name} optedOut={selected.sms_opted_out} />
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Texts">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-[var(--texts-surface)] px-4 py-2" style={{ minHeight: "2.95rem" }}>
+        <h3 className="text-sm font-semibold">Texts</h3>
+        {selected.sms_opted_out ? (
+          <span className="text-xs font-medium text-warning">Opted out (replied STOP)</span>
+        ) : selected.phone ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Smartphone className="h-3 w-3" /> <span className="tabular">{formatPhone(selected.phone)}</span></span>
+        ) : null}
+      </div>
+      <ConversationThread key={selected.conversation_id} conversationId={selected.conversation_id} contactName={selected.first_name || selected.name} optedOut={selected.sms_opted_out} />
+    </section>
   );
 
   return (
@@ -406,6 +417,8 @@ export default function Leads() {
                     layout === "docs-top" ? (
                       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                         <section className="flex max-h-[40%] min-h-0 shrink-0 flex-col border-b border-border bg-[var(--docs-surface)]" aria-label="Documents">{documentsPanel}</section>
+                        {/* a small gap between the two stacked panels */}
+                        <div className="h-2 shrink-0 border-b border-border bg-background" aria-hidden />
                         {thread}
                       </div>
                     ) : layout === "texts" ? (
