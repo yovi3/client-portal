@@ -18,7 +18,10 @@ def _get_env(name: str, default: str | None = None, required: bool = False) -> s
 class Settings:
     def __init__(self) -> None:
         self.environment = _get_env("APP_ENV", "development")
-        self.cookie_secure = self.environment == "production"
+        # Secure cookies are only sent over HTTPS. On by default in production; also
+        # turn on with COOKIE_SECURE=true wherever the app is served over HTTPS (robo's gateway).
+        self.cookie_secure = self.environment == "production" or (
+            (_get_env("COOKIE_SECURE", "false") or "false").strip().lower() in {"1", "true", "yes", "on"})
         
         # Database
         self.database_url = _get_env("DATABASE_URL", "sqlite:///./app.db")
@@ -80,6 +83,9 @@ class Settings:
         # them on. The first rollout is the intake team, working with leads only.
         # Where uploaded files are kept. Local disk on robo; Azure private storage before go-live (task 4.5).
         self.upload_directory = _get_env("UPLOAD_DIRECTORY", "uploads")
+        # Email-and-password sign-in. Turn off (PASSWORD_LOGIN_ENABLED=false) once Microsoft
+        # sign-in works: then only firm accounts can sign in, and the test accounts can't.
+        self.password_login_enabled = (_get_env("PASSWORD_LOGIN_ENABLED", "true") or "true").strip().lower() in {"1", "true", "yes", "on"}
         # The robo bridge proves who it is with this key (X-Bridge-Key header). Empty = bridge refused.
         self.bridge_api_key = _get_env("BRIDGE_API_KEY", "")
         self.cases_enabled = (_get_env("CASES_ENABLED", "false") or "false").strip().lower() in {"1", "true", "yes", "on"}

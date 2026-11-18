@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Scale, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -14,6 +14,14 @@ export default function LoginPage() {
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  // Email-and-password sign-in can be switched off on the server (Microsoft sign-in only).
+  const [passwordLogin, setPasswordLogin] = useState(true);
+  useEffect(() => {
+    apiFetch("/auth/options")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((o) => { if (o && o.password_login === false) setPasswordLogin(false); })
+      .catch(() => {});
+  }, []);
   const { updateUser } = useUser();
   const navigate = useNavigate();
 
@@ -88,6 +96,7 @@ export default function LoginPage() {
               Sign in with Microsoft
             </button>
 
+            {passwordLogin ? (<>
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border" />
@@ -162,13 +171,18 @@ export default function LoginPage() {
                 {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Signing in...</> : "Sign In"}
               </Button>
             </form>
+            </>) : (
+              <p className="text-center text-xs text-muted-foreground">Sign in with your Davis, Saperstein &amp; Salomon Microsoft account.</p>
+            )}
           </CardContent>
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground mt-4">
-          Don&apos;t have an account?{" "}
-          <a href="/register" className="text-primary hover:underline font-medium">Create one</a>
-        </p>
+        {passwordLogin && (
+          <p className="text-center text-sm text-muted-foreground mt-4">
+            Don&apos;t have an account?{" "}
+            <a href="/register" className="text-primary hover:underline font-medium">Create one</a>
+          </p>
+        )}
       </div>
     </div>
   );

@@ -57,7 +57,8 @@ export default function ConversationThread({ conversationId, contactName, optedO
     return () => { closed = true; ws.close(); };
   }, [conversationId]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "auto", block: "end" }); }, [messages, draft !== ""]);
+  // Scroll only this message list, never the page sideways.
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "auto", block: "end", inline: "nearest" }); }, [messages, draft !== ""]);
 
   const send = () => {
     const text = draft.trim();
@@ -70,7 +71,7 @@ export default function ConversationThread({ conversationId, contactName, optedO
   const parts = preview ? countTextParts(preview) : 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         {loading && <p className="text-sm text-muted-foreground">Loading messages…</p>}
         {!loading && messages.length === 0 && (
@@ -99,7 +100,7 @@ export default function ConversationThread({ conversationId, contactName, optedO
                     </span>
                     <div className="min-w-0 space-y-1">
                       <p className={`px-1 text-[0.6875rem] font-medium text-muted-foreground ${fromStaff ? "text-right" : ""}`}>{name}</p>
-                      <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${fromStaff ? "rounded-br-sm bg-primary text-primary-foreground" : msg.message_type === "file_upload" ? "rounded-bl-sm border border-success/40 bg-success/10" : "rounded-bl-sm border border-border bg-card shadow-sm"}`}>
+                      <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${fromStaff ? "rounded-br-sm bg-primary text-primary-foreground" : msg.message_type === "file_upload" ? "rounded-bl-sm border border-success/40 bg-success/10" : "rounded-bl-sm border border-border bg-card shadow-sm"}`}>
                         {msg.message_type === "file_request" && <span className="mb-1 flex items-center gap-1 text-xs font-semibold opacity-90"><FilePlus className="h-3.5 w-3.5" /> Document request</span>}
                         {msg.message_type === "file_send" && <span className="mb-1 flex items-center gap-1 text-xs font-semibold opacity-90"><Paperclip className="h-3.5 w-3.5" /> Documents sent</span>}
                         {msg.message_type === "file_upload" && <Paperclip className="mr-1.5 inline h-3.5 w-3.5 text-success" aria-hidden />}

@@ -146,9 +146,14 @@
   --sidebar-ring: #5B93F0;
 }
 
-/* Larger text, chosen per person in Settings. Sizes are in rem, so this scales them all. */
+/* Text size. Every size in the app is in rem, so these scale everything at once.
+   Normal is 17px (a step up from the browser's 16px); Larger, chosen per person in
+   Settings, is 19px. */
+html {
+  font-size: 106.25%;
+}
 html[data-text-size="large"] {
-  font-size: 112.5%;
+  font-size: 118.75%;
 }
 
 @layer base {

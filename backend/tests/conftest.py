@@ -20,11 +20,19 @@ os.environ.update({
     "TWILIO_AUTH_TOKEN": "test-auth-token",  # lets the webhook signature check run
     "TWILIO_VALIDATE_SIGNATURE": "true",
     "CASES_ENABLED": "false",
+    # Set here so robo's real .env (password sign-in off, HTTPS-only cookies, real
+    # Microsoft settings) never changes how the tests behave.
+    "PASSWORD_LOGIN_ENABLED": "true",
+    "COOKIE_SECURE": "false",
+    "BACKEND_BASE_URL": "http://testserver",
+    "AZURE_REDIRECT_URI": "http://testserver/auth/azure/callback",
+    "AZURE_ALLOWED_GROUP_IDS": "",
+    "AZURE_GROUP_ROLE_MAP": "{}",
     "BRIDGE_API_KEY": "test-bridge-key",
     "CLIENT_BASE_URL": "http://portal.test",
     "AZURE_CLIENT_ID": "not-set",
     "AZURE_TENANT_ID": "not-set",
-    "AZURE_CLIENT_SECRET": "not-set",
+    "AZURE_CLIENT_SECRET": "not-set",  # never the real secret from .env
 })
 
 import pytest  # noqa: E402

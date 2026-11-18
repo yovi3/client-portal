@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import HTTPException, APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from .. import crud, database, models, schemas
@@ -88,6 +88,9 @@ def accept_invite_route(
     payload: schemas.InviteAccept,
     db: Session = Depends(database.get_db),
 ):
+    # Accepting an invite creates an email-and-password account; refused while those are off.
+    if not settings.password_login_enabled:
+        raise HTTPException(status_code=403, detail="Email and password accounts are turned off.")
     user = crud.accept_invite(
         db=db,
         token=payload.token,

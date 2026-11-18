@@ -124,12 +124,20 @@ def _extract_group_identifiers(payload: dict, access_token: str | None) -> tuple
     return group_ids, combined
 
 
+@router.get("/options")
+def auth_options():
+    """Which sign-in methods the sign-in page should offer. Public: shown before sign-in."""
+    return {"password_login": settings.password_login_enabled, "microsoft_login": True}
+
+
 @router.post("/login", response_model=schemas.User)
 def auth_login(
     credentials: schemas.UserLogin,
     response: Response,
     db: Session = Depends(database.get_db),
 ):
+    if not settings.password_login_enabled:
+        raise HTTPException(status_code=403, detail="Email and password sign-in is turned off. Use Sign in with Microsoft.")
     user = crud.authenticate_user(db, credentials.email, credentials.password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password.")

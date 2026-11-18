@@ -281,3 +281,26 @@ def test_appearance_is_saved_per_person(staff, client_user):
     assert staff.get("/auth/me").json()["theme"] == "dark"
     assert client_user.get("/auth/me").json()["theme"] == "system"  # someone else's choice is untouched
     assert staff.patch("/me/appearance", json={"theme": "purple"}).status_code == 422
+
+
+# ---------------------------------------------------------------- deleting a typed-in lead
+
+def test_deleting_a_typed_in_lead_keeps_its_texts(staff, twilio_text):
+    lead = make_lead(staff)
+    twilio_text("+12015550101", "Hello?", "SM1")
+    assert staff.delete(f"/leads/{lead['id']}").status_code == 204
+    assert staff.get("/leads?show=all").json() == []
+    waiting = conversations(staff, "unassigned")
+    assert len(waiting) == 1 and waiting[0]["message_count"] == 1
+    assert staff.delete(f"/leads/{lead['id']}").status_code == 404
+
+
+# ---------------------------------------------------------------- password sign-in switch
+
+def test_password_sign_in_can_be_switched_off(anonymous, monkeypatch):
+    from app.api import auth as auth_api
+    assert anonymous.get("/auth/options").json()["password_login"] is True
+    monkeypatch.setattr(auth_api.settings, "password_login_enabled", False)
+    assert anonymous.get("/auth/options").json()["password_login"] is False
+    res = anonymous.post("/auth/login", json={"email": "staff@example.com", "password": "test-password-1"})
+    assert res.status_code == 403 and "Microsoft" in res.json()["detail"]

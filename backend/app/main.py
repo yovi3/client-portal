@@ -12,7 +12,8 @@ settings = get_settings()
 # WARNING: uploads/ is on local disk and is wiped on App Service restart/redeploy.
 # This is acceptable only for MVP. Replace with Azure Blob Storage before clients
 # upload anything they cannot easily re-upload.
-UPLOAD_DIRECTORY = "uploads"
+# Uploaded files live in UPLOAD_DIRECTORY (settings), e.g. C:\APPS\DssConnect\data\uploads on robo.
+UPLOAD_DIRECTORY = settings.upload_directory
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 
 app = FastAPI()

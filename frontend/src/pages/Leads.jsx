@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertCircle, FilePlus, FileUp, Filter, List, Loader2, MessagesSquare, Pencil, Plus, Search, Smartphone } from "lucide-react";
+import {
+  AlertCircle, FileDown, FileUp, Filter, List, Loader2, MessagesSquare, MoreHorizontal, Pencil, Plus, Search, Smartphone, Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import MainLayout from "@/components/layout/MainLayout";
 import ConversationThread from "@/components/conversation/ConversationThread";
@@ -18,12 +20,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { apiFetch, getWsBaseUrl } from "@/lib/api";
 import { useUser } from "@/lib/UserContext";
 import { formatPhone } from "@/lib/texting";
 
-// Leads (tasks 1.2 and 1.4). The conversation view is where intake staff text leads;
-// the lead list is the table for adding and editing them.
+// Leads (tasks 1.2, 1.4, 2.5). The conversation view has three columns: the leads, the
+// selected lead's documents, and its texts. Every lead has a "..." menu for the common
+// actions. The lead list is the full table, including leads no longer New or In Progress.
 
 const STATUS_LABEL = { open: "Open", signed: "Signed", closed: "Closed" };
 const EMPTY_FORM = { lead_number: "", first_name: "", last_name: "", phone: "", assigned_user_id: "", status: "open" };
@@ -51,6 +61,42 @@ export function LeadTag({ number }) {
   );
 }
 
+// The "..." menu on a lead: open it, request or send documents, and (for leads typed
+// in by hand) edit or delete. LeadBase leads are changed in LeadBase.
+function LeadActions({ lead, onOpen, onRequest, onSend, onEdit, onDelete, className = "" }) {
+  const manual = lead.source !== "lawbase";
+  const textable = !!lead.conversation_id;
+  return (
+    // modal={false}: opening the menu doesn't touch the rest of the page. In modal mode
+    // it hid every other element from screen readers and locked scrolling, which meant
+    // walking all ~400 rows on each open.
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Actions for lead ${lead.lead_number}`}
+          className={`rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className}`}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        {onOpen && <DropdownMenuItem onSelect={() => onOpen(lead)}><MessagesSquare className="h-4 w-4" /> Open conversation</DropdownMenuItem>}
+        <DropdownMenuItem disabled={!textable} onSelect={() => onRequest(lead)}><FileUp className="h-4 w-4" /> Request documents</DropdownMenuItem>
+        <DropdownMenuItem disabled={!textable} onSelect={() => onSend(lead)}><FileDown className="h-4 w-4" /> Send documents</DropdownMenuItem>
+        {manual && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => onEdit(lead)}><Pencil className="h-4 w-4" /> Edit lead</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onDelete(lead)} className="text-destructive focus:text-destructive"><Trash2 className="h-4 w-4" /> Delete lead</DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export default function Leads() {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get("view") === "list" ? "list" : "conversations";
@@ -62,9 +108,9 @@ export default function Leads() {
   const [loadError, setLoadError] = useState(null);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(undefined); // undefined = closed, null = adding, lead = editing
-  const [requesting, setRequesting] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [activity, setActivity] = useState({}); // conversation id -> counter, bumps on news
+  const [requestFor, setRequestFor] = useState(null); // lead to request documents from
+  const [sendFor, setSendFor] = useState(null);       // lead to send documents to
+  const [activity, setActivity] = useState({});       // conversation id -> counter, bumps on news
 
   const loadLeads = useCallback(async () => {
     try {
@@ -84,7 +130,7 @@ export default function Leads() {
     apiFetch("/leads/staff").then(async (r) => { if (r.ok) setStaff(await r.json()); });
   }, [loadLeads]);
 
-  // Live: reload the list when any conversation has news (a reply, a sent text).
+  // Live: reload when any conversation has news (a reply, a sent text, an upload).
   const reloadTimer = useRef(null);
   useEffect(() => {
     const ws = new WebSocket(`${getWsBaseUrl()}/ws/staff/activity`);
@@ -99,15 +145,50 @@ export default function Leads() {
     return () => { clearTimeout(reloadTimer.current); ws.close(); };
   }, [loadLeads]);
 
+  // A lead opened from the lead list may no longer be New or In Progress, so it isn't in
+  // the active list; fetch it separately and show it at the top.
+  const [extraLead, setExtraLead] = useState(null);
+  useEffect(() => {
+    if (view !== "conversations" || !selectedId || loading || leads.some((l) => l.id === selectedId)) {
+      setExtraLead(null);
+      return;
+    }
+    apiFetch("/leads?show=all")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((all) => setExtraLead(all.find((l) => l.id === selectedId) || null));
+  }, [view, selectedId, leads, loading]);
+  const shownLeads = extraLead ? [extraLead, ...leads] : leads;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return leads.filter((l) => !q || `${l.lead_number} ${l.name || ""} ${l.phone || ""}`.toLowerCase().includes(q));
-  }, [leads, query]);
+    return shownLeads.filter((l) => !q || `${l.lead_number} ${l.name || ""} ${l.phone || ""}`.toLowerCase().includes(q));
+  }, [shownLeads, query]);
 
-  const selected = leads.find((l) => l.id === selectedId) || (view === "conversations" ? filtered[0] : null);
+  const selected = shownLeads.find((l) => l.id === selectedId) || (view === "conversations" && !selectedId ? filtered[0] : null);
 
-  const select = (lead) => setSearchParams({ lead: String(lead.id) });
+  const openLead = (lead) => setSearchParams({ lead: String(lead.id) });
   const showView = (v) => setSearchParams(v === "list" ? { view: "list" } : selected ? { lead: String(selected.id) } : {});
+  const bump = (lead) => lead?.conversation_id && setActivity((p) => ({ ...p, [lead.conversation_id]: (p[lead.conversation_id] || 0) + 1 }));
+
+  const deleteLead = async (lead) => {
+    if (!window.confirm(`Delete lead ${lead.lead_number}${lead.name ? ` (${lead.name})` : ""}? Its texts and documents are kept, and its conversation goes back to Needs assigning.`)) return;
+    const res = await apiFetch(`/leads/${lead.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return toast.error(typeof data.detail === "string" ? data.detail : "The lead couldn't be deleted.");
+    }
+    toast.success(`Lead ${lead.lead_number} deleted`);
+    window.dispatchEvent(new Event("conversations-changed"));
+    if (selectedId === lead.id) setSearchParams(view === "list" ? { view: "list" } : {});
+    loadLeads();
+  };
+
+  const actions = {
+    onRequest: (lead) => setRequestFor(lead),
+    onSend: (lead) => setSendFor(lead),
+    onEdit: (lead) => setEditing(lead),
+    onDelete: deleteLead,
+  };
 
   const onSaved = (saved, wasEditing) => {
     setEditing(undefined);
@@ -125,7 +206,7 @@ export default function Leads() {
             <h1 className="text-[1.375rem] font-bold tracking-tight">Leads</h1>
             <p className="text-sm text-muted-foreground">
               {view === "list"
-                ? "Every lead in the portal, including ones no longer New or In Progress in LeadBase."
+                ? "Every lead in the portal, including ones no longer New or In Progress in LeadBase. Click a lead to open its conversation."
                 : "LeadBase leads that are New or In Progress. Your messages go out as texts, and replies show up here."}
             </p>
           </div>
@@ -140,15 +221,15 @@ export default function Leads() {
         {loadError && <p className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4" /> {loadError}</p>}
 
         {view === "list" ? (
-          <LeadTable leads={leads} loading={loading} onEdit={setEditing} />
+          <LeadTable leads={leads} loading={loading} onOpen={openLead} actions={actions} />
         ) : (
           <div className="flex overflow-hidden rounded-lg border border-border bg-card" style={{ height: "calc(100vh - 13rem)" }}>
-            {/* Left: leads, most recent conversation first */}
-            <div className="flex w-80 shrink-0 flex-col border-r border-border">
+            {/* Column 1: leads, most recent conversation first */}
+            <div className="flex w-72 shrink-0 flex-col border-r border-border xl:w-80">
               <div className="border-b border-border p-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input aria-label="Search leads" placeholder="Search by name, lead number or phone" value={query} onChange={(e) => setQuery(e.target.value)} className="border-0 bg-muted/50 pl-9" />
+                  <Input aria-label="Search leads" placeholder="Search name, lead number, phone" value={query} onChange={(e) => setQuery(e.target.value)} className="border-0 bg-muted/50 pl-9" />
                 </div>
               </div>
               <ul className="min-h-0 flex-1 overflow-y-auto" aria-label="Leads">
@@ -156,15 +237,17 @@ export default function Leads() {
                 {!loading && filtered.length === 0 && (
                   <li className="p-4 text-sm text-muted-foreground">{leads.length ? "No leads match." : "No leads yet. Add one, or use New text."}</li>
                 )}
-                {filtered.map((lead) => {
+                {filtered.map((lead, idx) => {
                   const active = selected?.id === lead.id;
+                  // Every other row lightly shaded, so a long list is easy to follow by eye.
+                  const shade = idx % 2 === 1 ? "bg-muted/60" : "bg-card";
                   return (
-                    <li key={lead.id}>
+                    <li key={lead.id} className="relative">
                       <button
                         type="button"
-                        onClick={() => select(lead)}
+                        onClick={() => openLead(lead)}
                         aria-current={active ? "true" : undefined}
-                        className={`w-full border-l-2 px-4 py-3 text-left transition-colors ${active ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/50"}`}
+                        className={`w-full border-b border-l-2 border-b-border/60 py-3 pl-4 pr-10 text-left transition-colors ${active ? "border-l-primary bg-accent" : `border-l-transparent ${shade} hover:bg-accent/60`}`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate text-sm font-medium">{lead.name || formatPhone(lead.phone) || "No name"}</span>
@@ -173,7 +256,6 @@ export default function Leads() {
                         <div className="mt-1 flex items-center gap-2">
                           <LeadTag number={lead.lead_number} />
                           {lead.lead_type && <span className="text-[0.6875rem] text-muted-foreground">{lead.lead_type}</span>}
-                          {lead.status !== "open" && <span className="text-[0.6875rem] text-muted-foreground">{STATUS_LABEL[lead.status]}</span>}
                         </div>
                         <p className="mt-1 truncate text-xs text-muted-foreground">
                           {lead.last_message
@@ -181,17 +263,18 @@ export default function Leads() {
                             : lead.phone ? "No texts yet" : "No mobile number"}
                         </p>
                       </button>
+                      <LeadActions lead={lead} {...actions} className="absolute right-1.5 top-2.5" />
                     </li>
                   );
                 })}
               </ul>
             </div>
 
-            {/* Right: the selected lead's conversation */}
+            {/* Columns 2 and 3: the selected lead's documents and texts */}
             <div className="flex min-w-0 flex-1 flex-col">
               {selected ? (
                 <>
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-6 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="truncate text-base font-semibold">{selected.name || "No name"}</h2>
@@ -215,29 +298,36 @@ export default function Leads() {
                         </p>
                       )}
                     </div>
-                    <div className="flex gap-2">
-                      {selected.conversation_id && (
-                        <>
-                          <Button size="sm" onClick={() => setRequesting(true)}><FilePlus className="h-4 w-4" /> Request documents</Button>
-                          <Button size="sm" variant="outline" onClick={() => setSending(true)}><FileUp className="h-4 w-4" /> Send documents</Button>
-                        </>
-                      )}
-                      {selected.source !== "lawbase" && (
-                        <Button variant="outline" size="sm" onClick={() => setEditing(selected)}><Pencil className="h-4 w-4" /> Edit lead</Button>
-                      )}
-                    </div>
+                    <LeadActions lead={selected} {...actions} />
                   </div>
 
-                  {selected.conversation_id && (
-                    <FileRequestsPanel conversationId={selected.conversation_id} refreshKey={activity[selected.conversation_id] || 0} />
-                  )}
                   {selected.conversation_id ? (
-                    <ConversationThread
-                      key={selected.conversation_id}
-                      conversationId={selected.conversation_id}
-                      contactName={selected.first_name || selected.name}
-                      optedOut={selected.sms_opted_out}
-                    />
+                    <div className="flex min-h-0 min-w-0 flex-1">
+                      {/* Column 2: documents */}
+                      <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-muted/30 xl:w-80" aria-label="Documents">
+                        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                          <h3 className="text-sm font-semibold">Documents</h3>
+                          <div className="flex gap-1.5">
+                            <Button size="sm" variant="outline" className="h-8" onClick={() => setRequestFor(selected)}><FileUp className="h-4 w-4" /> Request</Button>
+                            <Button size="sm" variant="outline" className="h-8" onClick={() => setSendFor(selected)}><FileDown className="h-4 w-4" /> Send</Button>
+                          </div>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-y-auto">
+                          <FileRequestsPanel
+                            conversationId={selected.conversation_id}
+                            refreshKey={activity[selected.conversation_id] || 0}
+                            contactName={selected.first_name || selected.name}
+                          />
+                        </div>
+                      </aside>
+                      {/* Column 3: texts */}
+                      <ConversationThread
+                        key={selected.conversation_id}
+                        conversationId={selected.conversation_id}
+                        contactName={selected.first_name || selected.name}
+                        optedOut={selected.sms_opted_out}
+                      />
+                    </div>
                   ) : (
                     <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
                       <Smartphone className="h-8 w-8 text-muted-foreground" aria-hidden />
@@ -263,24 +353,24 @@ export default function Leads() {
 
       <LeadFormDialog lead={editing} staff={staff} onClose={() => setEditing(undefined)} onSaved={onSaved} />
       <RequestDocumentsDialog
-        open={requesting}
-        conversationId={selected?.conversation_id}
-        contactName={selected?.first_name || selected?.name}
-        onClose={() => setRequesting(false)}
-        onSent={() => setActivity((prev) => ({ ...prev, [selected.conversation_id]: (prev[selected.conversation_id] || 0) + 1 }))}
+        open={!!requestFor}
+        conversationId={requestFor?.conversation_id}
+        contactName={requestFor?.first_name || requestFor?.name}
+        onClose={() => setRequestFor(null)}
+        onSent={() => bump(requestFor)}
       />
       <SendDocumentsDialog
-        open={sending}
-        conversationId={selected?.conversation_id}
-        contactName={selected?.first_name || selected?.name}
-        onClose={() => setSending(false)}
-        onSent={() => setActivity((prev) => ({ ...prev, [selected.conversation_id]: (prev[selected.conversation_id] || 0) + 1 }))}
+        open={!!sendFor}
+        conversationId={sendFor?.conversation_id}
+        contactName={sendFor?.first_name || sendFor?.name}
+        onClose={() => setSendFor(null)}
+        onSent={() => bump(sendFor)}
       />
     </MainLayout>
   );
 }
 
-function LeadTable({ leads, loading, onEdit }) {
+function LeadTable({ leads, loading, onOpen, actions }) {
   if (loading) {
     return <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-muted" />)}</div>;
   }
@@ -289,7 +379,7 @@ function LeadTable({ leads, loading, onEdit }) {
       <div className="rounded-lg border border-dashed border-border bg-card px-6 py-12 text-center">
         <Filter className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden />
         <h2 className="mt-3 text-base font-semibold">No leads yet</h2>
-        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Add a lead with its LeadBase number and mobile phone, and it's ready to text.</p>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Leads from LeadBase show up here within a minute. You can also add one by hand.</p>
       </div>
     );
   }
@@ -306,15 +396,16 @@ function LeadTable({ leads, loading, onEdit }) {
             <th className="px-4 py-2.5 font-medium">LeadBase status</th>
             <th className="px-4 py-2.5 font-medium">Source</th>
             <th className="px-4 py-2.5 font-medium">Added</th>
+            <th className="w-10 px-2 py-2.5"><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {leads.map((lead) => (
-            <tr key={lead.id} onClick={() => lead.source !== "lawbase" && onEdit(lead)} className={`border-b border-border last:border-0 hover:bg-muted/50 ${lead.source !== "lawbase" ? "cursor-pointer" : ""}`}>
+            <tr key={lead.id} onClick={() => onOpen(lead)} className="cursor-pointer border-b border-border last:border-0 even:bg-muted/60 hover:bg-accent/60">
               <td className="px-4 py-3">
-                {lead.source !== "lawbase"
-                  ? <button type="button" className="text-left" onClick={(e) => { e.stopPropagation(); onEdit(lead); }}><LeadTag number={lead.lead_number} /></button>
-                  : <LeadTag number={lead.lead_number} />}
+                <button type="button" className="text-left" onClick={(e) => { e.stopPropagation(); onOpen(lead); }} aria-label={`Open lead ${lead.lead_number}`}>
+                  <LeadTag number={lead.lead_number} />
+                </button>
               </td>
               <td className="px-4 py-3 font-medium">{lead.name || <span className="text-muted-foreground">No name</span>}</td>
               <td className="px-4 py-3">
@@ -326,6 +417,7 @@ function LeadTable({ leads, loading, onEdit }) {
               <td className="px-4 py-3"><span className={lead.status === "open" ? "font-medium" : "text-muted-foreground"}>{lead.lb_status || STATUS_LABEL[lead.status] || lead.status}</span></td>
               <td className="px-4 py-3 text-muted-foreground">{lead.source === "lawbase" ? "LeadBase" : "Typed in"}</td>
               <td className="px-4 py-3 text-muted-foreground"><time>{formatDate(lead.created_at)}</time></td>
+              <td className="px-2 py-3"><LeadActions lead={lead} onOpen={onOpen} {...actions} /></td>
             </tr>
           ))}
         </tbody>

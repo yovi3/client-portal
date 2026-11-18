@@ -181,3 +181,30 @@ def update_lead(
     db.commit()
     db.refresh(lead)
     return _link_conversation(db, lead)
+
+
+@router.delete("/leads/{lead_id}", status_code=204)
+def delete_lead(
+    lead_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Delete a lead typed in by hand. Its texts and documents are kept: its conversation
+    goes back to Needs assigning, so nothing anyone sent or received is lost.
+
+    LeadBase leads can't be deleted here; the next sync would bring them back.
+    """
+    require_role(current_user, PERSONNEL_ROLES)
+    lead = db.get(models.Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found.")
+    if lead.source == "lawbase":
+        raise HTTPException(status_code=409, detail="This lead comes from LeadBase, so it can't be deleted here.")
+    db.query(models.Conversation).filter(models.Conversation.lead_id == lead.id).update(
+        {models.Conversation.lead_id: None}, synchronize_session=False)
+    db.query(models.Message).filter(models.Message.lead_id == lead.id).update(
+        {models.Message.lead_id: None}, synchronize_session=False)
+    db.query(models.FileRequest).filter(models.FileRequest.lead_id == lead.id).update(
+        {models.FileRequest.lead_id: None}, synchronize_session=False)
+    db.delete(lead)
+    db.commit()

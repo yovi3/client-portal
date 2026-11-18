@@ -79,3 +79,9 @@ def test_leadbase_leads_are_changed_in_leadbase(anonymous, staff):
     send(anonymous, lb_lead())
     lead = staff.get("/leads").json()[0]
     assert staff.patch(f"/leads/{lead['id']}", json={"first_name": "Changed"}).status_code == 409
+
+
+def test_leadbase_leads_cannot_be_deleted_here(anonymous, staff):
+    send(anonymous, lb_lead())
+    lead = staff.get("/leads").json()[0]
+    assert staff.delete(f"/leads/{lead['id']}").status_code == 409
