@@ -126,3 +126,76 @@ def test_load_leads_button_wakes_the_bridge(anonymous, staff, client_user):
     send(anonymous, lb_lead())
     status = staff.get("/lead-sync/status").json()
     assert status["finished_at"] >= requested and status["result"]["created"] == 1
+
+
+# ---------------------------------------------------------------- texts into LeadBase's SMS History
+
+import datetime as _dt
+
+
+def _sms_settings(monkeypatch, **values):
+    from app.api import bridge as bridge_api
+    defaults = dict(sms_history_enabled=True, sms_history_since="2020-01-01T00:00:00Z",
+                    sms_history_include_simulated=True, sms_history_only_leads=[])
+    defaults.update(values)
+    for k, v in defaults.items():
+        monkeypatch.setattr(bridge_api.settings, k, v)
+
+
+def _text_lead(staff, conversation_id, text):
+    with staff.websocket_connect(f"/ws/conversation/{conversation_id}") as ws:
+        ws.send_json({"content": text})
+        ws.receive_json(); ws.receive_json()   # sent, then its (simulated) status
+
+
+def test_staff_matched_to_lawbase_logins(anonymous, staff):
+    res = anonymous.post("/bridge/staff", headers=KEY, json={"staff": [
+        {"login": "AINTAKE", "email": "STAFF@example.com", "name": "Alice Intake"},
+        {"login": "NOBODY", "email": "nobody@dsslaw.com"}]}).json()
+    assert res["matched"] == 1 and res["changed"] == 1
+    assert anonymous.post("/bridge/staff", json={"staff": []}).status_code == 401
+
+
+def test_texts_go_to_sms_history_once_then_status_updates(anonymous, staff, twilio_text, monkeypatch):
+    _sms_settings(monkeypatch)
+    send(anonymous, lb_lead(serial=5550, number="4058", phone="201-555-0111"))
+    anonymous.post("/bridge/staff", headers=KEY, json={"staff": [{"login": "AINTAKE", "email": "staff@example.com"}]})
+    lead = staff.get("/leads").json()[0]
+    _text_lead(staff, lead["conversation_id"], "Hi Rosa, it's Alice from DSS.")
+    twilio_text("+12015550111", "Thanks!", "SM1")
+
+    pending = anonymous.get("/bridge/sms-pending", headers=KEY).json()
+    assert [(p["direction"], p["post_by"], p["status"], p["source"]) for p in pending] == [
+        ("Outgoing", "AINTAKE", "Sent", "DSSConnect:AINTAKE"),
+        ("Incoming", "DSSCONNECT", "Read", "DSSConnect:IN")]
+    assert all(p["case_serial"] == 5550 and p["phone"] == "2015550111" and p["serial"] is None for p in pending)
+
+    # The bridge writes both; they don't come back.
+    anonymous.post("/bridge/sms-done", headers=KEY, json={"results": [
+        {"message_id": p["message_id"], "serial": 30000 + i, "status": p["status"]} for i, p in enumerate(pending)]})
+    assert anonymous.get("/bridge/sms-pending", headers=KEY).json() == []
+
+    # A delivery report later: the outgoing text comes back once, as an update to its row.
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal(); m = db.get(models.Message, pending[0]["message_id"]); m.sms_status = "delivered"; db.commit(); db.close()
+    again = anonymous.get("/bridge/sms-pending", headers=KEY).json()
+    assert len(again) == 1 and again[0]["serial"] == 30000 and again[0]["status"] == "Delivered"
+
+
+def test_sms_history_safety_switches(anonymous, staff, monkeypatch):
+    send(anonymous, lb_lead(serial=5551, number="4058", phone="201-555-0111"),
+         lb_lead(serial=5552, number="70002", phone="201-555-0222"))
+    for lead in staff.get("/leads").json():
+        _text_lead(staff, lead["conversation_id"], "test")
+    _sms_settings(monkeypatch, sms_history_enabled=False)
+    assert anonymous.get("/bridge/sms-pending", headers=KEY).json() == []           # off by default
+    _sms_settings(monkeypatch, sms_history_since="")
+    assert anonymous.get("/bridge/sms-pending", headers=KEY).json() == []           # needs a start moment
+    _sms_settings(monkeypatch, sms_history_include_simulated=False)
+    assert anonymous.get("/bridge/sms-pending", headers=KEY).json() == []           # simulated texts stay out
+    _sms_settings(monkeypatch, sms_history_only_leads=["4058"])
+    assert {p["case_serial"] for p in anonymous.get("/bridge/sms-pending", headers=KEY).json()} == {5551}
+    future = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=1)).isoformat()
+    _sms_settings(monkeypatch, sms_history_since=future)
+    assert anonymous.get("/bridge/sms-pending", headers=KEY).json() == []           # nothing before the start

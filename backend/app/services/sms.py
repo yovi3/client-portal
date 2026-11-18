@@ -70,6 +70,13 @@ def status_callback_url() -> Optional[str]:
     return f"{base}/api/twilio/webhook/status" if base.startswith("https://") else None
 
 
+def _masked(number: str) -> str:
+    """Logs show only the last 4 digits of a phone number, and never the message itself:
+    the database keeps the full record; the log only needs enough to troubleshoot."""
+    digits = "".join(ch for ch in (number or "") if ch.isdigit())
+    return f"...{digits[-4:]}" if digits else "(no number)"
+
+
 def send_sms(to_number: str, body: str) -> SendResult:
     """Send one text.
 
@@ -77,7 +84,7 @@ def send_sms(to_number: str, body: str) -> SendResult:
     (asyncio.to_thread) so live chat is not held up while Twilio responds.
     """
     if not _twilio_client:
-        logger.info("SMS SIMULATION to %s: %s", to_number, body)
+        logger.info("SMS SIMULATION to %s (%d characters)", _masked(to_number), len(body or ""))
         return SendResult(status="simulated")
     params = {"body": body, "to": to_number}
     if settings.twilio_messaging_service_sid:
@@ -89,11 +96,11 @@ def send_sms(to_number: str, body: str) -> SendResult:
         params["status_callback"] = callback
     try:
         message = _twilio_client.messages.create(**params)
-        logger.info("SMS sent (SID: %s) to %s", message.sid, to_number)
+        logger.info("SMS sent (SID: %s) to %s", message.sid, _masked(to_number))
         return SendResult(status="sent", sid=message.sid)
     except TwilioRestException as e:
-        logger.error("Twilio refused SMS to %s: %s %s", to_number, e.code, e.msg)
+        logger.error("Twilio refused SMS to %s: %s %s", _masked(to_number), e.code, e.msg)
         return SendResult(status="failed", error_code=e.code, error_text=describe_error(e.code, e.msg))
     except Exception as e:
-        logger.error("Failed to send SMS to %s: %s", to_number, str(e))
+        logger.error("Failed to send SMS to %s: %s", _masked(to_number), str(e))
         return SendResult(status="failed", error_text="The text couldn't be sent. Try again in a minute.")

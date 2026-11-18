@@ -90,7 +90,7 @@ async def twilio_sms_webhook(
             await manager.broadcast(texting.message_event(message), room)
         await manager.broadcast(texting.activity_event(message.conversation_id), STAFF_ACTIVITY_ROOM)
     else:
-        logger.info("Inbound SMS from %s was a repeat delivery; ignored", client_phone)
+        logger.info("Inbound SMS from ...%s was a repeat delivery; ignored", "".join(ch for ch in (client_phone or "") if ch.isdigit())[-4:])
 
     return Response(content="<Response></Response>", media_type="application/xml")
 

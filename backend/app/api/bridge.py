@@ -176,3 +176,108 @@ def sync_status(current_user: models.User = Depends(get_current_user)):
     require_role(current_user, PERSONNEL_ROLES)
     return {"requested_at": _iso(_sync_state["requested_at"]), "finished_at": _iso(_sync_state["finished_at"]),
             "result": _sync_state["result"]}
+
+
+# ---------------------------------------------------------------------------------------
+# Staff logins (task 2.6) and texts into LeadBase's SMS History (task 2.9)
+# ---------------------------------------------------------------------------------------
+
+@router.post("/staff", dependencies=[Depends(require_bridge)])
+def receive_staff(batch: schemas.BridgeStaffBatch, db: Session = Depends(database.get_db)):
+    """LawBase's active users (from dssc.GetStaff). Each portal staff member is matched to
+    their LawBase login by email; that login is the "Posted By" on texts they send."""
+    by_email = {(m.email or "").strip().lower(): m for m in batch.staff if m.email}
+    matched = changed = 0
+    for user in db.query(models.User).filter(models.User.role.in_(PERSONNEL_ROLES)).all():
+        member = by_email.get((user.email or "").strip().lower())
+        login = member.login.strip() if member else None
+        if member:
+            matched += 1
+        if user.lawbase_login != login:
+            user.lawbase_login = login
+            changed += 1
+    db.commit()
+    return {"received": len(batch.staff), "matched": matched, "changed": changed}
+
+
+# Portal text status -> LeadBase SMS History status. Texts blocked by STOP were never sent,
+# so they aren't written at all.
+_LB_STATUS = {"sending": "Sent", "sent": "Sent", "delivered": "Delivered", "failed": "Failed", "received": "Read"}
+
+
+def _sms_history_since() -> Optional[datetime.datetime]:
+    value = settings.sms_history_since
+    if not value:
+        return None
+    try:
+        when = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=datetime.timezone.utc)
+
+
+def _as_utc(value: datetime.datetime) -> datetime.datetime:
+    return value if value.tzinfo else value.replace(tzinfo=datetime.timezone.utc)
+
+
+@router.get("/sms-pending", response_model=List[schemas.BridgeSmsItem], dependencies=[Depends(require_bridge)])
+def sms_pending(limit: int = 100, db: Session = Depends(database.get_db)):
+    """Texts in LeadBase leads' conversations that aren't in LeadBase's SMS History yet,
+    or whose delivery status changed since they were written. Empty unless switched on
+    (SMS_HISTORY_ENABLED) with a start moment (SMS_HISTORY_SINCE)."""
+    since = _sms_history_since()
+    if not settings.sms_history_enabled or since is None:
+        return []
+    q = (db.query(models.Message, models.Conversation, models.Lead)
+         .join(models.Conversation, models.Conversation.id == models.Message.conversation_id)
+         .join(models.Lead, models.Lead.id == models.Conversation.lead_id)
+         .filter(models.Lead.lawbase_serial.isnot(None),
+                 models.Message.channel == "sms",
+                 models.Message.message_type != "file_upload",
+                 # times are stored as UTC without a zone
+                 models.Message.timestamp >= since.astimezone(datetime.timezone.utc).replace(tzinfo=None)))
+    if settings.sms_history_only_leads:
+        q = q.filter(models.Lead.lead_number.in_(settings.sms_history_only_leads))
+    items: List[schemas.BridgeSmsItem] = []
+    for message, conversation, lead in q.order_by(models.Message.id).limit(5000):
+        portal_status = message.sms_status
+        if portal_status == "simulated" and settings.sms_history_include_simulated:
+            portal_status = "sent"
+        status = _LB_STATUS.get(portal_status or "")
+        if status is None:
+            continue  # simulated (not allowed), opted out, or not a text
+        if message.lb_sms_serial and message.lb_sms_status == status:
+            continue  # already in LeadBase, unchanged
+        incoming = message.sender_id is None
+        sender = None if incoming else db.get(models.User, message.sender_id)
+        login = (sender.lawbase_login if sender else None) or "DSSCONNECT"
+        items.append(schemas.BridgeSmsItem(
+            message_id=message.id,
+            serial=message.lb_sms_serial,
+            case_serial=lead.lawbase_serial,
+            date_utc=_as_utc(message.timestamp),
+            direction="Incoming" if incoming else "Outgoing",
+            post_by="DSSCONNECT" if incoming else login,
+            phone="".join(ch for ch in conversation.phone if ch.isdigit())[-10:],
+            message=message.content,
+            status=status,
+            source=f"DSSConnect:{'IN' if incoming else login}"[:50],
+        ))
+        if len(items) >= max(1, min(limit, 500)):
+            break
+    return items
+
+
+@router.post("/sms-done", dependencies=[Depends(require_bridge)])
+def sms_done(batch: schemas.BridgeSmsDoneBatch, db: Session = Depends(database.get_db)):
+    """The bridge reports each text it wrote: its SMS History row and the status written."""
+    saved = 0
+    for result in batch.results:
+        message = db.get(models.Message, result.message_id)
+        if not message or result.error or not result.serial:
+            continue
+        message.lb_sms_serial = result.serial
+        message.lb_sms_status = result.status
+        saved += 1
+    db.commit()
+    return {"saved": saved}

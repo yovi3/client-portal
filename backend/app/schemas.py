@@ -785,3 +785,38 @@ class LeadPage(BaseModel):
 
 class ConversationLookup(BaseModel):
     conversation: Optional[ConversationSummary] = None
+
+
+class BridgeStaffMember(BaseModel):
+    login: str = Field(min_length=1, max_length=100)
+    email: Optional[str] = None
+    name: Optional[str] = None
+
+
+class BridgeStaffBatch(BaseModel):
+    staff: List[BridgeStaffMember] = Field(max_length=5000)
+
+
+class BridgeSmsItem(BaseModel):
+    """One text the bridge should add to (serial empty) or update in LeadBase's SMS History."""
+    message_id: int
+    serial: Optional[int] = None
+    case_serial: int
+    date_utc: datetime
+    direction: str          # Outgoing / Incoming
+    post_by: str
+    phone: str              # 10 digits, as LawBase stores them
+    message: str
+    status: str             # Sent / Delivered / Failed / Read
+    source: str             # DSSConnect:<login or IN>
+
+
+class BridgeSmsDone(BaseModel):
+    message_id: int
+    serial: Optional[int] = None
+    status: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BridgeSmsDoneBatch(BaseModel):
+    results: List[BridgeSmsDone] = Field(max_length=1000)

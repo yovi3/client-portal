@@ -86,6 +86,16 @@ class Settings:
         # Email-and-password sign-in. Turn off (PASSWORD_LOGIN_ENABLED=false) once Microsoft
         # sign-in works: then only firm accounts can sign in, and the test accounts can't.
         self.password_login_enabled = (_get_env("PASSWORD_LOGIN_ENABLED", "true") or "true").strip().lower() in {"1", "true", "yes", "on"}
+        # Texts written to LeadBase's SMS History by the bridge (task 2.9). Off unless turned on.
+        #   SMS_HISTORY_SINCE: only texts from this moment (ISO date/time, UTC) are written,
+        #     so earlier test traffic never reaches LeadBase. Required when enabled.
+        #   SMS_HISTORY_INCLUDE_SIMULATED: also write texts that were only simulated (testing).
+        #   SMS_HISTORY_ONLY_LEADS: comma-separated lead numbers; empty = every LeadBase lead.
+        truthy = {"1", "true", "yes", "on"}
+        self.sms_history_enabled = (_get_env("SMS_HISTORY_ENABLED", "false") or "").strip().lower() in truthy
+        self.sms_history_since = (_get_env("SMS_HISTORY_SINCE", "") or "").strip()
+        self.sms_history_include_simulated = (_get_env("SMS_HISTORY_INCLUDE_SIMULATED", "false") or "").strip().lower() in truthy
+        self.sms_history_only_leads = [x.strip() for x in (_get_env("SMS_HISTORY_ONLY_LEADS", "") or "").split(",") if x.strip()]
         # The robo bridge proves who it is with this key (X-Bridge-Key header). Empty = bridge refused.
         self.bridge_api_key = _get_env("BRIDGE_API_KEY", "")
         self.cases_enabled = (_get_env("CASES_ENABLED", "false") or "false").strip().lower() in {"1", "true", "yes", "on"}

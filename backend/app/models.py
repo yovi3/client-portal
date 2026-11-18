@@ -46,6 +46,8 @@ class User(Base):
     text_size = Column(String, nullable=False, default="normal", server_default="normal")
     # How the documents and texts panels are told apart: distinct (two tints), soft, plain.
     panel_colors = Column(String, nullable=False, default="distinct", server_default="distinct")
+    # This person's LawBase login, matched by email from LawBase's users (task 2.6).
+    lawbase_login = Column(String, nullable=True)
     role = Column(String, nullable=False) # 'lawyer', 'client', 'admin', 'accountant'
     aad_object_id = Column(String, unique=True, index=True, nullable=True)
     auth_provider = Column(String, nullable=False, default="local")
@@ -239,6 +241,10 @@ class Message(Base):
     sms_status = Column(String, nullable=True)
     sms_sid = Column(String, unique=True, index=True, nullable=True)  # Twilio SM... id
     sms_error = Column(String, nullable=True)  # plain-language reason when it failed
+    # Its row in LeadBase's SMS History (task 2.9), once the bridge has written it, and the
+    # status last written there (so a later delivery update is written once).
+    lb_sms_serial = Column(Integer, nullable=True)
+    lb_sms_status = Column(String, nullable=True)
 
     # The thread this message belongs to (one per phone number).
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True, index=True)

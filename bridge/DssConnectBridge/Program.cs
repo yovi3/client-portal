@@ -18,12 +18,15 @@ builder.Services.AddSingleton<RunLog>();
 builder.Services.AddSingleton<PortalClient>();
 builder.Services.AddSingleton<LawBaseLeads>();
 builder.Services.AddSingleton<LeadSync>();
+builder.Services.AddSingleton<LawBaseWrites>();
+builder.Services.AddSingleton<WriteBackSync>();
 
 if (once)
 {
     using var host = builder.Build();
     var sync = host.Services.GetRequiredService<LeadSync>();
     var ok = await sync.RunOnceAsync(CancellationToken.None);
+    if (ok) await host.Services.GetRequiredService<WriteBackSync>().RunOnceAsync(CancellationToken.None);
     return ok ? 0 : 1;
 }
 

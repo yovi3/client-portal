@@ -7,6 +7,13 @@ public sealed record KnownLeads(List<int> serials);
 
 public sealed record SyncRequest(bool sync);
 
+/// <summary>One text the portal wants in LeadBase's SMS History (serial empty = add it).</summary>
+public sealed record SmsItem(
+    int message_id, int? serial, int case_serial, DateTimeOffset date_utc, string direction,
+    string post_by, string phone, string message, string status, string source);
+
+public sealed record SmsDone(int message_id, int? serial, string? status, string? error);
+
 public sealed record LeadSyncResult(
     int received, int created, int updated, int merged_with_typed_in, int unchanged,
     int conversations_created, List<string> skipped);
@@ -54,6 +61,31 @@ public sealed class PortalClient
             throw new HttpRequestException($"Portal said {(int)res.StatusCode}");
         var answer = await res.Content.ReadFromJsonAsync<SyncRequest>(ct);
         return answer?.sync == true;
+    }
+
+    public async Task SendStaffAsync(List<StaffMember> staff, CancellationToken ct)
+    {
+        RequireKey();
+        using var res = await _http.PostAsJsonAsync("bridge/staff", new { staff }, ct);
+        if (!res.IsSuccessStatusCode)
+            throw new HttpRequestException($"Portal said {(int)res.StatusCode}: {await res.Content.ReadAsStringAsync(ct)}");
+    }
+
+    public async Task<List<SmsItem>> GetSmsPendingAsync(CancellationToken ct)
+    {
+        RequireKey();
+        using var res = await _http.GetAsync("bridge/sms-pending?limit=100", ct);
+        if (!res.IsSuccessStatusCode)
+            throw new HttpRequestException($"Portal said {(int)res.StatusCode}");
+        return await res.Content.ReadFromJsonAsync<List<SmsItem>>(ct) ?? [];
+    }
+
+    public async Task SendSmsDoneAsync(List<SmsDone> results, CancellationToken ct)
+    {
+        RequireKey();
+        using var res = await _http.PostAsJsonAsync("bridge/sms-done", new { results }, ct);
+        if (!res.IsSuccessStatusCode)
+            throw new HttpRequestException($"Portal said {(int)res.StatusCode}: {await res.Content.ReadAsStringAsync(ct)}");
     }
 
     public async Task<LeadSyncResult> SendLeadsAsync(List<BridgeLead> leads, CancellationToken ct)

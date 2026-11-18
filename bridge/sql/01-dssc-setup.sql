@@ -6,7 +6,9 @@
   - The bridge's account (OFFICE\svc-dssconnect) may only run procedures in the dssc
     schema of LBIntegrations. It cannot read or change any LawBase table itself.
   - Each dssc procedure is signed with a certificate. In Lawbase12, a user made from
-    that certificate has SELECT on only the tables the procedures need. Only signed
+    that certificate has only what the procedures need: SELECT on PB0, PB2, PAGE0 and
+    User_Profile; SELECT, INSERT and UPDATE on SmsHistory; SELECT and UPDATE on Counters
+    (LawBase's own row-number counters). Only signed
     code gets those rights, and only while it runs.
   - The certificate's private key is removed right after signing, so no password or
     key is stored anywhere and nothing else can be signed with it. Changing a
@@ -73,6 +75,86 @@ BEGIN
 END;
 GO
 
+/* Staff: LawBase logins and emails, so DSS Connect can match each person to their login
+   (used as PostBy on the texts they send). Active users only. */
+CREATE OR ALTER PROCEDURE dssc.GetStaff
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT u.Login, NULLIF(LTRIM(RTRIM(u.email)), '') AS Email, u.FullName
+    FROM Lawbase12.dbo.User_Profile AS u
+    WHERE u.ActiveUser = 'Y' AND NULLIF(LTRIM(RTRIM(u.email)), '') IS NOT NULL;
+END;
+GO
+
+/* Adds one text to a lead's SMS History (task 2.9), the way LawBase does: the row number
+   comes from LawBase's own counter row for SmsHistory in dbo.Counters, taken and increased
+   in one locked statement, exactly what GetSerialForTableFlexbase does. LawBase and DSS
+   Connect share that row, so they never take the same number. (Calling LawBase's procedure
+   itself would need the bridge account to have a user in Lawbase12, which it deliberately
+   doesn't.) The number and the row are taken together: if adding the row fails, the
+   number isn't used up. Source starts with "DSSConnect:" and Sid stays empty, so
+   these rows are always recognisable and LawBase's Twilio integration has nothing of ours
+   to look up. Only an existing lead or case can be written to. */
+CREATE OR ALTER PROCEDURE dssc.AddSmsHistory
+    @CaseSerial  int,
+    @DateOfSms   datetime,
+    @Direction   varchar(10),
+    @PostBy      varchar(50),
+    @PhoneNumber varchar(20),
+    @Message     varchar(max),
+    @Status      varchar(20),
+    @Source      varchar(50),
+    @Serial      int OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    IF @Direction NOT IN ('Outgoing', 'Incoming')
+        THROW 50001, 'Direction must be Outgoing or Incoming.', 1;
+    IF LEFT(@Source, 11) <> 'DSSConnect:'
+        THROW 50002, 'Source must start with DSSConnect:', 1;
+    IF NOT EXISTS (SELECT 1 FROM Lawbase12.dbo.PB0 WHERE Serial = @CaseSerial)
+       AND NOT EXISTS (SELECT 1 FROM Lawbase12.dbo.PAGE0 WHERE Serial = @CaseSerial)
+        THROW 50003, 'No lead or case has that serial.', 1;
+
+    -- Already written (the bridge wrote it but couldn't report back)? Return that row.
+    SELECT TOP (1) @Serial = Serial FROM Lawbase12.dbo.SmsHistory
+    WHERE Source LIKE 'DSSConnect:%' AND CaseSerial = @CaseSerial AND DateOfSms = @DateOfSms
+      AND Direction = @Direction AND Message = @Message
+    ORDER BY Serial;
+    IF @Serial IS NOT NULL RETURN;
+
+    BEGIN TRANSACTION;
+        UPDATE Lawbase12.dbo.Counters WITH (ROWLOCK, XLOCK)
+        SET @Serial = Number = ISNULL(Number, 0) + 1
+        WHERE Table_Name = 'SmsHistory';
+        IF @@ROWCOUNT <> 1 OR ISNULL(@Serial, 0) <= 0
+            THROW 50004, 'LawBase has no SmsHistory counter row.', 1;
+
+        INSERT INTO Lawbase12.dbo.SmsHistory
+            (Serial, CaseSerial, DateOfSms, Direction, PostBy, PhoneNumber, Message, Sid, Source, Status)
+        VALUES
+            (@Serial, @CaseSerial, @DateOfSms, @Direction, LEFT(@PostBy, 50), LEFT(@PhoneNumber, 20), @Message, NULL, LEFT(@Source, 50), LEFT(@Status, 20));
+    COMMIT TRANSACTION;
+END;
+GO
+
+/* Updates the status of a text DSS Connect added (Sent -> Delivered, Undelivered...).
+   Only ever touches DSS Connect's own rows. */
+CREATE OR ALTER PROCEDURE dssc.UpdateSmsStatus
+    @Serial int,
+    @Status varchar(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE Lawbase12.dbo.SmsHistory
+    SET Status = LEFT(@Status, 20)
+    WHERE Serial = @Serial AND Source LIKE 'DSSConnect:%';
+    SELECT @@ROWCOUNT AS updated;
+END;
+GO
+
 /* ---------------------------------------------------------------------------------
    Rebuild the signing certificate and sign every procedure in the dssc schema.
    --------------------------------------------------------------------------------- */
@@ -120,7 +202,10 @@ CREATE CERTIFICATE DSSC_LawbaseReader FROM BINARY = ' + @public + N';
 CREATE USER DSSC_LawbaseReader FROM CERTIFICATE DSSC_LawbaseReader;
 GRANT SELECT ON dbo.PB0 TO DSSC_LawbaseReader;
 GRANT SELECT ON dbo.PB2 TO DSSC_LawbaseReader;
-GRANT SELECT ON dbo.User_Profile TO DSSC_LawbaseReader;';
+GRANT SELECT ON dbo.User_Profile TO DSSC_LawbaseReader;
+GRANT SELECT ON dbo.PAGE0 TO DSSC_LawbaseReader;
+GRANT SELECT, INSERT, UPDATE ON dbo.SmsHistory TO DSSC_LawbaseReader;
+GRANT SELECT, UPDATE ON dbo.Counters TO DSSC_LawbaseReader;';
 EXEC Lawbase12.sys.sp_executesql @sql;
 
 PRINT 'Signed procedures:';

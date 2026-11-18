@@ -6,7 +6,7 @@ namespace DssConnectBridge;
 /// After a failure it waits longer each time (up to 10 minutes) so a portal or database
 /// outage doesn't flood the log, and goes back to the normal pace as soon as a sync works.
 /// </summary>
-public sealed class LeadSyncWorker(LeadSync sync, PortalClient portal, RunLog log, Microsoft.Extensions.Options.IOptions<BridgeOptions> options)
+public sealed class LeadSyncWorker(LeadSync sync, WriteBackSync writeBack, PortalClient portal, RunLog log, Microsoft.Extensions.Options.IOptions<BridgeOptions> options)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -17,6 +17,13 @@ public sealed class LeadSyncWorker(LeadSync sync, PortalClient portal, RunLog lo
         while (!stoppingToken.IsCancellationRequested)
         {
             var ok = await sync.RunOnceAsync(stoppingToken);
+            if (ok)
+            {
+                // Then LeadBase write-back: texts into SMS History, staff logins.
+                try { await writeBack.RunOnceAsync(stoppingToken); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                catch (Exception ex) { log.Write($"Write-back FAILED: {ex.GetType().Name}: {ex.Message}"); }
+            }
             wait = ok ? normal : TimeSpan.FromSeconds(Math.Min(600, wait.TotalSeconds * 2));
             try
             {
